@@ -26,6 +26,8 @@ namespace ZooKeeperNet
 
         private readonly ConcurrentQueue<Packet> pendingQueue = new ConcurrentQueue<Packet>();
         private readonly LinkedList<Packet> outgoingQueue = new LinkedList<Packet>();
+        private readonly AutoResetEvent packetAre = new AutoResetEvent(false);
+
         public int PendingQueueCount
         {
             get
@@ -99,12 +101,23 @@ namespace ZooKeeperNet
                 if (h.Type == (int)OpCode.CloseSession)
                     closing = true;
                 // enqueue the packet when zookeeper is connected
-                lock (outgoingQueue)
-                {
-                    outgoingQueue.AddLast(p);
-                }
+                addPacketLast(p);
             }
             return p;
+        }
+
+        private void addPacketFirst(Packet p)
+        {
+            outgoingQueue.AddFirst(p);
+            
+        }
+        private void addPacketLast(Packet p)
+        {
+            lock (outgoingQueue)
+            {
+                outgoingQueue.AddLast(p);
+            }
+            packetAre.Set();
         }
 
         private void SendRequests()
@@ -153,11 +166,7 @@ namespace ZooKeeperNet
                         }
                         else
                         {
-                            // spin the processor
-                            spin.SpinOnce();
-                            if (spin.Count > ClientConnection.maxSpin)
-                                // reset the spinning counter
-                                spin.Reset();
+                            packetAre.WaitOne(TimeSpan.FromMilliseconds(1));
                         }
                     }
                 }
@@ -385,16 +394,18 @@ namespace ZooKeeperNet
                     h.Type = (int)OpCode.SetWatches;
                     h.Xid = -8;
                     Packet packet = new Packet(h, new ReplyHeader(), sw, null, null, null, null, null);
-                    outgoingQueue.AddFirst(packet);
+                    //outgoingQueue.AddFirst(packet);
+                    addPacketFirst(packet);
                 }
 
                 foreach (ClientConnection.AuthData id in conn.authInfo)
-                    outgoingQueue.AddFirst(
+                    addPacketFirst(
                         new Packet(new RequestHeader(-4, (int) OpCode.Auth), null, new AuthPacket(0, id.Scheme, id.GetData()), null, null, null, null, null));
 
-                outgoingQueue.AddFirst(new Packet(null, null, conReq, null, null, null, null, null));
+                addPacketFirst(new Packet(null, null, conReq, null, null, null, null, null));
+                
             }
-
+            packetAre.Set();
             if (LOG.IsDebugEnabled)
                 LOG.DebugFormat("Session establishment request sent on {0}",client.Client.RemoteEndPoint);
         }

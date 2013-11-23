@@ -88,15 +88,18 @@ namespace ZooKeeperNet
             this.watchRegistration = watchRegistration;
         }
 
+
+        private readonly ManualResetEventSlim mreslim = new ManualResetEventSlim(false);
+        public bool WaitUntilFinishedSlim(TimeSpan timeout)
+        {
+            return mreslim.Wait(timeout);
+        }
+
         internal bool Finished
         {
-            get
-            {
-                return Interlocked.CompareExchange(ref finished,0,0) == 1;
-            }
             set
             {
-                Interlocked.Exchange(ref finished, value ? 1 : 0);
+                mreslim.Set();
             }
         }
 
