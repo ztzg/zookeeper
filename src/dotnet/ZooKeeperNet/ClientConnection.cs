@@ -232,18 +232,10 @@ namespace ZooKeeperNet
         {
             ReplyHeader r = new ReplyHeader();
             Packet p = QueuePacket(h, r, request, response, null, null, watchRegistration, null, null);
-            SpinWait spin = new SpinWait();
-            DateTime start = DateTime.Now;
-            // now wait for reply for the packet
-            while (!p.Finished)
+            
+            if (!p.WaitUntilFinishedSlim(SessionTimeout))
             {
-                spin.SpinOnce();
-                if (spin.Count > ClientConnection.maxSpin)
-                {
-                    if(DateTime.Now.Subtract(start) > SessionTimeout)
-                        throw new TimeoutException(new StringBuilder("The request ").Append(request).Append(" timed out while waiting for a response from the server.").ToString());
-                    spin.Reset();
-                }
+                throw new TimeoutException(new StringBuilder("The request ").Append(request).Append(" timed out while waiting for a response from the server.").ToString());
             }
             return r;
         }
