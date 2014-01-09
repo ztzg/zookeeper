@@ -211,8 +211,7 @@ namespace ZooKeeperNet
         private IEnumerable<IPAddress> ResolveHostToIpAddresses(string host)
         {
             var hostEntry = Dns.GetHostEntry(host);
-            return hostEntry.AddressList.Where(x => 
-                !x.IsIPv6LinkLocal && !x.IsIPv6SiteLocal && !x.IsIPv6Multicast && !x.IsIPv6Teredo);
+            return hostEntry.AddressList.Where(x => x.AddressFamily == AddressFamily.InterNetwork);
         }
 
         private void SetTimeouts(TimeSpan sessionTimeout)
