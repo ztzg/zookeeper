@@ -300,13 +300,13 @@ namespace ZooKeeperNet
                 {
                     SubmitRequest(new RequestHeader { Type = (int)OpCode.CloseSession }, null, null, null);
                     SpinWait spin = new SpinWait();
-                    DateTime start = DateTime.Now;
+                    DateTime timeoutAt = DateTime.UtcNow.Add(SessionTimeout);
                     while (!producer.IsConnectionClosedByServer)
                     {
                         spin.SpinOnce();
                         if (spin.Count > maxSpin)
                         {
-                            if (DateTime.Now.Subtract(start) > SessionTimeout)
+                            if (timeoutAt <= DateTime.UtcNow)
                             {
                                 throw new TimeoutException(
                                     string.Format("Timed out in Dispose() while closing session: 0x{0:X}", SessionId));

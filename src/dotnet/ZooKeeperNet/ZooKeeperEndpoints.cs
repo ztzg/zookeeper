@@ -106,7 +106,7 @@ namespace ZooKeeperNet
                         ResetConnections(endpointID);
                     }
                 }
-                while (this.zkEndpoints[endpointID].NextAvailability > DateTime.Now);
+                while (this.zkEndpoints[endpointID].NextAvailability > DateTime.UtcNow);
             }
 
             this.endpoint = zkEndpoints[endpointID];

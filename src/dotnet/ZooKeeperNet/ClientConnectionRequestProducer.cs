@@ -123,7 +123,7 @@ namespace ZooKeeperNet
 
         private void SendRequests()
         {
-            DateTime now = DateTime.Now;
+            DateTime now = DateTime.UtcNow;
             DateTime lastSend = now;
             Packet packet = null;
             SpinWait spin = new SpinWait();
@@ -131,7 +131,7 @@ namespace ZooKeeperNet
             {
                 try
                 {
-                    now = DateTime.Now;
+                    now = DateTime.UtcNow;
                     if (client == null || !client.Connected || zooKeeper.State == ZooKeeper.States.NOT_CONNECTED)
                     {
                         // don't re-establish connection if we are closing
@@ -162,7 +162,7 @@ namespace ZooKeeperNet
                             // We have something to send so it's the same
                             // as if we do the send now.                        
                             DoSend(packet);
-                            lastSend = DateTime.Now;
+                            lastSend = DateTime.UtcNow;
                             packet = null;
                         }
                         else
@@ -462,7 +462,7 @@ namespace ZooKeeperNet
 
         private void SendPing()
         {
-            lastPingSentNs = DateTime.Now.Nanos();
+            lastPingSentNs = DateTime.UtcNow.Nanos();
             RequestHeader h = new RequestHeader(-2, (int)OpCode.Ping);
             conn.QueuePacket(h, null, null, null, null, null, null, null, null);
         }
@@ -534,7 +534,7 @@ namespace ZooKeeperNet
                 {
                     // -2 is the xid for pings
                     if (LOG.IsDebugEnabled)
-                        LOG.DebugFormat("Got ping response for sessionid: 0x{0:X} after {1}ms", conn.SessionId, (DateTime.Now.Nanos() - lastPingSentNs) / 1000000);
+                        LOG.DebugFormat("Got ping response for sessionid: 0x{0:X} after {1}ms", conn.SessionId, (DateTime.UtcNow.Nanos() - lastPingSentNs) / 1000000);
                     return;
                 }
                 if (replyHdr.Xid == -4)

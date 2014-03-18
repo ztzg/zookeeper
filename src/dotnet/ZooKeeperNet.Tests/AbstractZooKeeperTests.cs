@@ -104,7 +104,7 @@ namespace ZooKeeperNet.Tests
             [MethodImpl(MethodImplOptions.Synchronized)]
             void waitForConnected(TimeSpan timeout)
             {
-                DateTime expire = DateTime.Now + timeout;
+                DateTime expire = DateTime.UtcNow + timeout;
                 TimeSpan left = timeout;
                 while (!connected && left.TotalMilliseconds > 0)
                 {
@@ -112,7 +112,7 @@ namespace ZooKeeperNet.Tests
                     {
                         Monitor.TryEnter(sync, left);
                     }
-                    left = expire - DateTime.Now;
+                    left = expire - DateTime.UtcNow;
                 }
                 if (!connected)
                 {
@@ -123,7 +123,7 @@ namespace ZooKeeperNet.Tests
 
             void waitForDisconnected(TimeSpan timeout)
             {
-                DateTime expire = DateTime.Now + timeout;
+                DateTime expire = DateTime.UtcNow + timeout;
                 TimeSpan left = timeout;
                 while (connected && left.TotalMilliseconds > 0)
                 {
@@ -131,7 +131,7 @@ namespace ZooKeeperNet.Tests
                     {
                         Monitor.TryEnter(sync, left);
                     }
-                    left = expire - DateTime.Now;
+                    left = expire - DateTime.UtcNow;
                 }
                 if (connected)
                 {
