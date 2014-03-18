@@ -62,7 +62,7 @@ namespace ZooKeeperNet
         public void SetAsFailure()
         {
             this.retryAttempts++;
-            this.nextAvailability = this.nextAvailability == DateTime.MinValue ? DateTime.Now : this.nextAvailability;
+            this.nextAvailability = this.nextAvailability == DateTime.MinValue ? DateTime.UtcNow : this.nextAvailability;
             this.nextAvailability = GetNextAvailability(this.nextAvailability, this.backoffInterval, this.retryAttempts);
         }
 

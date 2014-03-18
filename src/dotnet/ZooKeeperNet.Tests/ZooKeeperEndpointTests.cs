@@ -47,8 +47,8 @@ namespace ZooKeeperNet.Tests
         public void testBackoff() 
         {
             List<int> expectedBackoff = new List<int>{1,1,3,7,15,31,63,127,255,511};
-            DateTime nextAvailable = DateTime.Now;
-            DateTime lastAvailable = DateTime.Now;
+            DateTime nextAvailable = DateTime.UtcNow;
+            DateTime lastAvailable = DateTime.UtcNow;
             TimeSpan backoff;
             int totalMinutes;
 
@@ -114,7 +114,7 @@ namespace ZooKeeperNet.Tests
             do
             {
                 zkEndpoints.GetNextAvailableEndpoint();
-                if (DateTime.Now > backoffTime)
+                if (DateTime.UtcNow > backoffTime)
                 {
                     //when the backoff ends we should cycle back to the first connection
                     Assert.AreEqual(ips[0], zkEndpoints.CurrentEndPoint.ServerAddress.Address.ToString());
@@ -142,7 +142,7 @@ namespace ZooKeeperNet.Tests
             {
                 zkEndpoints.GetNextAvailableEndpoint();
                 zkEndpoints.CurrentEndPoint.SetAsSuccess();
-                if (DateTime.Now > backoffTime)
+                if (DateTime.UtcNow > backoffTime)
                 {
                     foreach (ZooKeeperEndpoint z in zkEndpoints)
                     {

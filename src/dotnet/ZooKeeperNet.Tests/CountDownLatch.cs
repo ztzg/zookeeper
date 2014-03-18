@@ -19,7 +19,7 @@ namespace ZooKeeperNet.Tests
 
         public bool Await(TimeSpan wait)
         {
-            start = DateTime.Now;
+            start = DateTime.UtcNow;
             remaining = wait;
             while (count < occurences)
             {
@@ -31,7 +31,7 @@ namespace ZooKeeperNet.Tests
 
         public void CountDown()
         {
-            remaining = DateTime.Now - start;
+            remaining = DateTime.UtcNow - start;
             Interlocked.Increment(ref count);
             reset.Set();
         }
