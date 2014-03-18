@@ -210,8 +210,35 @@ namespace ZooKeeperNet
 
         private IEnumerable<IPAddress> ResolveHostToIpAddresses(string host)
         {
-            var hostEntry = Dns.GetHostEntry(host);
-            return hostEntry.AddressList.Where(x => x.AddressFamily == AddressFamily.InterNetwork);
+            // if the host represents an explicit IP address, use it directly. otherwise
+            // lookup the name into it's IP addresses
+            IPAddress parsedAddress;
+            if (IPAddress.TryParse(host, out parsedAddress))
+            {
+                yield return parsedAddress;
+            }
+            else
+            {
+                IPHostEntry hostEntry = Dns.GetHostEntry(host);
+                IEnumerable<IPAddress> addresses = hostEntry.AddressList.Where(IsAllowedAddressFamily);
+                foreach (IPAddress address in addresses)
+                {
+                    yield return address;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Checks to see if the specified address has an allowable address family.
+        /// </summary>
+        /// <param name="address">The adress to check.</param>
+        /// <returns>
+        /// <c>true</c> if the address is in the allowable address families, otherwise <c>false</c>.
+        /// </returns>
+        private static bool IsAllowedAddressFamily(IPAddress address)
+        {
+            // in the future, IPv6 (AddressFamily.InterNetworkV6) should be supported
+            return address.AddressFamily == AddressFamily.InterNetwork;
         }
 
         private void SetTimeouts(TimeSpan sessionTimeout)
