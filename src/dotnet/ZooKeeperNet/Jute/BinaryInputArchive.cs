@@ -117,7 +117,7 @@ namespace Org.Apache.Jute
         {
             int len = ReadInt(tag);
             if (len == -1) return null;
-            if (len < 0 || len > ClientConnection.packetLen)
+            if (len < 0 || len > ClientConnection.MaximumPacketLength)
             {
                 throw new IOException(new StringBuilder("Unreasonable length = ").Append(len).ToString());
             }
