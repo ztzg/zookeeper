@@ -437,7 +437,7 @@ namespace ZooKeeperNet
 
             lock (outgoingQueue)
             {
-                if (!ClientConnection.disableAutoWatchReset && (!zooKeeper.DataWatches.IsEmpty() || !zooKeeper.ExistWatches.IsEmpty() || !zooKeeper.ChildWatches.IsEmpty()))
+                if (!ClientConnection.DisableAutoWatchReset && (!zooKeeper.DataWatches.IsEmpty() || !zooKeeper.ExistWatches.IsEmpty() || !zooKeeper.ChildWatches.IsEmpty()))
                 {
                     var sw = new SetWatches(lastZxid, zooKeeper.DataWatches, zooKeeper.ExistWatches, zooKeeper.ChildWatches);
                     var h = new RequestHeader();
@@ -491,7 +491,7 @@ namespace ZooKeeperNet
             using (EndianBinaryReader reader = new EndianBinaryReader(EndianBitConverter.Big, new MemoryStream(content), Encoding.UTF8))
             {
                 int len = reader.ReadInt32();
-                if (len < 0 || len >= ClientConnection.packetLen)
+                if (len < 0 || len >= ClientConnection.MaximumPacketLength)
                     throw new IOException(new StringBuilder("Packet len ").Append(len).Append("is out of range!").ToString());
                 return len;
             }

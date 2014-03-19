@@ -16,14 +16,13 @@
  *
  */
 
-using System.Net.Sockets;
-
 namespace ZooKeeperNet
 {
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Net;
+    using System.Net.Sockets;
     using System.Text;
     using System.Threading;
     using log4net;
@@ -34,11 +33,59 @@ namespace ZooKeeperNet
     {
         private static readonly ILog LOG = LogManager.GetLogger(typeof(ClientConnection));
 
-        //TODO find an elegant way to set this parameter
-        public const int packetLen = 4096 * 1024;
-        internal static readonly bool disableAutoWatchReset = false;
-        private static readonly TimeSpan defaultConnectTimeout = new TimeSpan(0, 0, 0, 0, 500);
-        internal const int maxSpin = 30;
+        private static readonly TimeSpan DefaultConnectTimeout = TimeSpan.FromMilliseconds(500);        
+        private static bool disableAutoWatchReset = false;
+        private static int maximumPacketLength = 1024 * 1024 * 4;
+        private static int maximumSpin = 30;
+
+        /// <summary>
+        /// Gets a value indicating how many times we should spin during waits.
+        /// Defaults to 30.
+        /// </summary>
+        public static int MaximumSpin
+        {
+            get { return maximumSpin; }
+            set
+            {
+                if (value <= 0)
+                {
+                    string message = string.Format("Cannot set property '{0}' to less than zero. Value is: {1}.", "MaximumSpin", value);
+                    throw new InvalidOperationException(message);
+                }
+
+                maximumSpin = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating the maximum packet length allowed.
+        /// Defaults to 4,194,304 (4MB).
+        /// </summary>
+        public static int MaximumPacketLength
+        {
+            get { return maximumPacketLength; }
+            set
+            {
+                if (value <= 0)
+                {
+                    string message = string.Format("Cannot set property '{0}' to less than zero. Value is: {1}.", "MaximumPacketLength", value);
+                    throw new InvalidOperationException(message);
+                }
+
+                maximumPacketLength = value;
+                
+            }
+        }
+
+        /// <summary>
+        /// Gets a value indicating if auto watch reset should be disabled or not.
+        /// Defaults to <c>false</c>.
+        /// </summary>
+        public static bool DisableAutoWatchReset
+        {
+            get { return disableAutoWatchReset; }
+            set { disableAutoWatchReset = value; }
+        }
 
         //static ClientConnection()
         //{
@@ -72,10 +119,10 @@ namespace ZooKeeperNet
                 return Interlocked.CompareExchange(ref isClosed, 0, 0) == 1;
             }
         }
+
         internal ClientConnectionRequestProducer producer;
         internal ClientConnectionEventConsumer consumer;
-
-
+        
         /// <summary>
         /// Initializes a new instance of the <see cref="ClientConnection"/> class.
         /// </summary>
@@ -84,7 +131,7 @@ namespace ZooKeeperNet
         /// <param name="zooKeeper">The zoo keeper.</param>
         /// <param name="watcher">The watch manager.</param>
         public ClientConnection(string connectionString, TimeSpan sessionTimeout, ZooKeeper zooKeeper, ZKWatchManager watcher):
-            this(connectionString, sessionTimeout, zooKeeper, watcher, 0, new byte[16], defaultConnectTimeout)
+            this(connectionString, sessionTimeout, zooKeeper, watcher, 0, new byte[16], DefaultConnectTimeout)
         {
         }
 
@@ -112,7 +159,7 @@ namespace ZooKeeperNet
         /// <param name="sessionId">The session id.</param>
         /// <param name="sessionPasswd">The session passwd.</param>
         public ClientConnection(string hosts, TimeSpan sessionTimeout, ZooKeeper zooKeeper, ZKWatchManager watcher, long sessionId, byte[] sessionPasswd)
-            : this(hosts, sessionTimeout, zooKeeper, watcher, 0, new byte[16], defaultConnectTimeout)
+            : this(hosts, sessionTimeout, zooKeeper, watcher, 0, new byte[16], DefaultConnectTimeout)
         {
         }
 
@@ -331,7 +378,7 @@ namespace ZooKeeperNet
                     while (!producer.IsConnectionClosedByServer)
                     {
                         spin.SpinOnce();
-                        if (spin.Count > maxSpin)
+                        if (spin.Count > MaximumSpin)
                         {
                             if (timeoutAt <= DateTime.UtcNow)
                             {

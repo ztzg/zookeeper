@@ -68,7 +68,7 @@
                     }
 
                     // clear the watches if auto watch reset is not enabled
-                    if (ClientConnection.disableAutoWatchReset &&
+                    if (ClientConnection.DisableAutoWatchReset &&
                         state != KeeperState.SyncConnected)
                     {
                         dataWatches.Clear();

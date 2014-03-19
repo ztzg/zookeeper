@@ -83,7 +83,7 @@ using System.Collections.Generic;
                         else
                         {
                             spin.SpinOnce();
-                            if (spin.Count > ClientConnection.maxSpin)
+                            if (spin.Count > ClientConnection.MaximumSpin)
                                 spin.Reset();
                         }
                         
