@@ -126,7 +126,7 @@ namespace ZooKeeperNet
             DateTime now = DateTime.UtcNow;
             DateTime lastSend = now;
             Packet packet = null;
-            SpinWait spin = new SpinWait();
+
             while (zooKeeper.State.IsAlive())
             {
                 try

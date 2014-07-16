@@ -22,7 +22,7 @@
     using System.Threading;
     using log4net;
     using System.Text;
-using System.Collections.Generic;
+    using System.Collections.Generic;
 
     public class ClientConnectionEventConsumer : IStartable, IDisposable
     {
@@ -31,8 +31,8 @@ using System.Collections.Generic;
         private readonly ClientConnection conn;
         private readonly Thread eventThread;
         //ConcurrentQueue gives us the non-blocking way of processing, it reduced the contention so much
-        internal readonly ConcurrentQueue<ClientConnection.WatcherSetEventPair> waitingEvents = new ConcurrentQueue<ClientConnection.WatcherSetEventPair>();
-
+        internal readonly BlockingCollection<ClientConnection.WatcherSetEventPair> waitingEvents = new BlockingCollection<ClientConnection.WatcherSetEventPair>();
+        
         /** This is really the queued session state until the event
          * thread actually processes the event and hands it to the watcher.
          * But for all intents and purposes this is the state.
@@ -72,21 +72,15 @@ using System.Collections.Generic;
         {
             try
             {
-                SpinWait spin = new SpinWait();
-                while(Interlocked.CompareExchange(ref isDisposed, 1, 1) == 0)
+                while(!waitingEvents.IsCompleted)
                 {
                     try
                     {
-                        ClientConnection.WatcherSetEventPair pair;
-                        if (waitingEvents.TryDequeue(out pair))
-                            ProcessWatcher(pair.Watchers, pair.WatchedEvent);
-                        else
+                        ClientConnection.WatcherSetEventPair pair = null;
+                        if (waitingEvents.TryTake(out pair, -1))
                         {
-                            spin.SpinOnce();
-                            if (spin.Count > ClientConnection.MaximumSpin)
-                                spin.Reset();
+                            ProcessWatcher(pair.Watchers, pair.WatchedEvent);
                         }
-                        
                     }
                     catch (ObjectDisposedException)
                     {
@@ -116,7 +110,7 @@ using System.Collections.Generic;
         {
             if (@event.Type == EventType.None && sessionState == @event.State) return;
 
-            if (Interlocked.CompareExchange(ref isDisposed, 0, 0) == 1)
+            if (waitingEvents.IsAddingCompleted)
                 throw new InvalidOperationException("consumer has been disposed");
             
             sessionState = @event.State;
@@ -124,7 +118,7 @@ using System.Collections.Generic;
             // materialize the watchers based on the event
             var pair = new ClientConnection.WatcherSetEventPair(conn.watcher.Materialize(@event.State, @event.Type,@event.Path), @event);
             // queue the pair (watch set & event) for later processing
-            waitingEvents.Enqueue(pair);
+            waitingEvents.Add(pair);
         }
 
         private int isDisposed = 0;
@@ -134,14 +128,12 @@ using System.Collections.Generic;
             {
                 try
                 {
+                    waitingEvents.CompleteAdding();
+
                     if (eventThread.IsAlive)
                     {
                         eventThread.Join();
                     }
-                    //process any unprocessed event
-                    ClientConnection.WatcherSetEventPair pair;
-                    while (waitingEvents.TryDequeue(out pair))
-                        ProcessWatcher(pair.Watchers, pair.WatchedEvent);  
                 }
                 catch (Exception ex)
                 {
