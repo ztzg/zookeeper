@@ -132,7 +132,7 @@ namespace ZooKeeperNet
                 try
                 {
                     now = DateTime.UtcNow;
-                    if (client == null || !client.Connected || zooKeeper.State == ZooKeeper.States.NOT_CONNECTED)
+                    if ((client == null || client.Client == null) || (!client.Connected || zooKeeper.State == ZooKeeper.States.NOT_CONNECTED))
                     {
                         // don't re-establish connection if we are closing
                         if(conn.IsClosed || closing)
