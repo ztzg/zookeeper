@@ -379,7 +379,14 @@ namespace ZooKeeperNet
                 if (client == null)
                     return;
                 NetworkStream stream = client.GetStream();
-                len = stream.EndRead(ar);
+
+                try
+                {
+                    len = stream.EndRead(ar);
+                }
+                catch
+                {
+                }
                 if (len == 0) //server closed the connection...
                 {
                     LOG.Debug("TcpClient connection lost.");
