@@ -71,5 +71,32 @@ namespace ZooKeeperNetRecipes.Tests {
 			}
 			Assert.Pass();
 		}
+
+        [Test]
+	    public void testNode4DoesNotBecomeLeaderWhenNonLeader3Closes()
+	    {
+            string dir = "/test";
+            int num_clients = 4;
+            clients = new ZooKeeper[num_clients];
+            LeaderElection[] elections = new LeaderElection[num_clients];
+            ILeaderWatcher[] leaderWatchers = new ILeaderWatcher[num_clients];
+
+            for (byte i = 0; i < clients.Length; i++)
+            {
+                clients[i] = CreateClient();
+                leaderWatchers[i] = new TestLeaderWatcher(i);
+                elections[i] = new LeaderElection(clients[i], dir, leaderWatchers[i], new[] { i });
+                elections[i].Start();
+            }
+
+            // Kill 2
+            elections[2].Close();
+            
+            elections[0].Close();
+            elections[1].Close();
+            elections[3].Close();
+            // First one should still leader
+            Assert.AreEqual(0, TestLeaderWatcher.Leader);
+        }
 	}
 }
