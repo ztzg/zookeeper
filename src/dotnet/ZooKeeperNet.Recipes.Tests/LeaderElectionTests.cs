@@ -37,7 +37,7 @@ namespace ZooKeeperNetRecipes.Tests {
 		}
 
 		private class TestLeaderWatcher : ILeaderWatcher {
-			public static byte Leader;
+			public byte Leader;
 			private readonly byte b;
 
 			public TestLeaderWatcher(byte b) {
@@ -53,7 +53,6 @@ namespace ZooKeeperNetRecipes.Tests {
 		[Test]
 		public void testElection() {
 			String dir = "/test";
-			String testString = "Hello World";
 			int num_clients = 10;
 			clients = new ZooKeeper[num_clients];
 			LeaderElection[] elections = new LeaderElection[num_clients];
@@ -71,5 +70,36 @@ namespace ZooKeeperNetRecipes.Tests {
 			}
 			Assert.Pass();
 		}
+
+		[Test]
+		public void testNode4DoesNotBecomeLeaderWhenNonLeader3Closes()
+		{
+			var dir = "/test";
+			var num_clients = 4;
+			clients = new ZooKeeper[num_clients];
+			var elections = new LeaderElection[num_clients];
+			var leaderWatchers = new TestLeaderWatcher[num_clients];
+
+			for (byte i = 0; i < clients.Length; i++)
+			{
+				clients[i] = CreateClient();
+				leaderWatchers[i] = new TestLeaderWatcher((byte)(i + 1)); // Start at 1 so we can check it is set
+				elections[i] = new LeaderElection(clients[i], dir, leaderWatchers[i], new[] { i });
+				elections[i].Start();
+			}
+
+			// Kill 2
+			elections[2].Close();
+			// First one should still be leader
+			Thread.Sleep(3000);
+			Assert.AreEqual(1, leaderWatchers[0].Leader);
+			Assert.AreEqual(0, leaderWatchers[1].Leader);
+			Assert.AreEqual(0, leaderWatchers[2].Leader);
+			Assert.AreEqual(0, leaderWatchers[3].Leader);
+			elections[0].Close();
+			elections[1].Close();
+			elections[3].Close();
+		}
 	}
 }
+

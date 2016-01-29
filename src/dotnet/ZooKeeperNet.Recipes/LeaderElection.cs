@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 
 namespace ZooKeeperNet.Recipes {
@@ -100,8 +99,8 @@ namespace ZooKeeperNet.Recipes {
 			if (penultimate == null) {
 				throw new InvalidOperationException("Penultimate value in priors is null, but count shoudl have been at least 2.");
 			}
-			var watchPath = path.Combine(penultimate.Name);
-			if (Zookeeper.Exists(watchPath, new LeaderWatcher(this, watchPath, watcher)) == null) {
+			var penultimatePath = path.Combine(penultimate.Name);
+			if (Zookeeper.Exists(penultimatePath, new LeaderWatcher(Zookeeper, this, penultimatePath, watcher, path, id)) == null) {
 				IsOwner = true;
 				watcher.TakeLeadership();
 				return true;
@@ -111,20 +110,43 @@ namespace ZooKeeperNet.Recipes {
 
 		private class LeaderWatcher : IWatcher {
 			private readonly LeaderElection election;
+			private readonly string penultimatePath;
 			private readonly string path;
 			private readonly ILeaderWatcher watcher;
+			private readonly IZooKeeper zooKeeper;
+			private readonly string id;
 
-			public LeaderWatcher(LeaderElection election, string path, ILeaderWatcher watcher) {
+			public LeaderWatcher(IZooKeeper zooKeeper, LeaderElection election, string penultimatePath, ILeaderWatcher watcher, string path, string id) { 
+				this.zooKeeper = zooKeeper;
 				this.election = election;
-				this.path = path;
+				this.penultimatePath = penultimatePath;
 				this.watcher = watcher;
+				this.path = path;
+				this.id = id;
 			}
 
 			public void Process(WatchedEvent @event) {
-				if (@event.Type == EventType.NodeDeleted && @event.Path == path) {
-					election.IsOwner = true;
-					watcher.TakeLeadership();
+				if (@event.Type == EventType.NodeDeleted && @event.Path == penultimatePath) {
+					var names = zooKeeper.GetChildren(path, false);
+					var sortedNames = new SortedSet<ZNodeName>();
+
+					foreach (var name in names)
+					{
+						sortedNames.Add(new ZNodeName(name));
+					}
+
+					if (SmallestZNode(sortedNames))
+					{
+						election.IsOwner = true;
+						watcher.TakeLeadership();
+					}
 				}
+			}
+
+			private bool SmallestZNode(SortedSet<ZNodeName> sortedNames)
+			{
+				// If a client receives a notification that the znode it is watching is gone, then it becomes the new leader in the case that there is no smaller znode		
+				return sortedNames.Any() && id.EndsWith(sortedNames.First().Name, StringComparison.InvariantCulture);
 			}
 		}
 
