@@ -611,6 +611,8 @@ static void free_auth_info(auth_list_head_t *auth_list)
         auth_info* old_auth = NULL;
         if(auth->scheme!=NULL)
             free(auth->scheme);
+        if(auth->free_cert!=NULL)
+            auth->free_cert(auth->get_cert_ctx);
         deallocate_Buffer(&auth->auth);
         old_auth = auth;
         auth = auth->next;
@@ -2106,6 +2108,46 @@ static int send_info_packet(zhandle_t *zh, auth_info* auth) {
     return rc;
 }
 
+static const char* get_hostname(const struct sockaddr_storage* ep)
+{
+    static char buf[128];
+    char addrstr[128];
+    void *inaddr;
+    if(ep==0)
+        return "null";
+
+#if defined(AF_INET6)
+    if(ep->ss_family==AF_INET6){
+        inaddr=&((struct sockaddr_in6*)ep)->sin6_addr;
+    } else {
+#endif
+    inaddr=&((struct sockaddr_in*)ep)->sin_addr;
+#if defined(AF_INET6)
+    }
+#endif
+
+    inet_ntop(ep->ss_family,inaddr,addrstr,sizeof(addrstr)-1);
+    sprintf(buf,"%s",addrstr);
+    return buf;
+}
+
+static const char* get_current_hostname(zhandle_t* zh)
+{
+    return get_hostname(&zh->addr_cur);
+}
+
+static void update_auth_info(auth_info* auth, zhandle_t *zh)
+{
+    if(auth->get_cert != NULL)
+    {
+        struct buffer temp = auth->get_cert(get_current_hostname(zh), auth->get_cert_ctx);
+        auth->auth.len = temp.len;
+        free(auth->auth.buff);
+        auth->auth.buff=calloc(1,temp.len);
+        memcpy(auth->auth.buff, temp.buff, temp.len);
+    }
+}
+
 /** send all auths, not just the last one **/
 static int send_auth_info(zhandle_t *zh) {
     int rc = 0;
@@ -2118,6 +2160,7 @@ static int send_auth_info(zhandle_t *zh) {
         return ZOK;
     }
     while (auth != NULL) {
+        update_auth_info(auth, zh);
         rc = send_info_packet(zh, auth);
         auth = auth->next;
     }
@@ -2137,6 +2180,7 @@ static int send_last_auth_info(zhandle_t *zh)
       zoo_unlock_auth(zh);
       return ZOK; // there is nothing to send
     }
+    update_auth_info(auth, zh);
     rc = send_info_packet(zh, auth);
     zoo_unlock_auth(zh);
     LOG_DEBUG(LOGCALLBACK(zh), "Sending auth info request to %s",zoo_get_current_server(zh));
@@ -5101,6 +5145,54 @@ int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
     authinfo->scheme=strdup(scheme);
     authinfo->auth=auth;
     authinfo->completion=completion;
+    authinfo->get_cert=NULL;
+    authinfo->get_cert_ctx = NULL;
+    authinfo->free_cert = NULL;
+    authinfo->data=data;
+    authinfo->next = NULL;
+    add_last_auth(&zh->auth_h, authinfo);
+    zoo_unlock_auth(zh);
+
+    if (is_connected(zh) ||
+        // When associating, only send info packets if no SASL
+        // negotiation is planned.  (Such packets would be queued in
+        // front of SASL packets, which is forbidden, and SASL
+        // completion is followed by a 'send_auth_info' anyway.)
+        (zh->state == ZOO_ASSOCIATING_STATE && !has_sasl_client(zh))) {
+        return send_last_auth_info(zh);
+    }
+
+    return ZOK;
+}
+
+int zoo_add_auth_cb(zhandle_t *zh,const char* scheme, get_auth_cert_t get_cert, void* get_cert_ctx,
+     free_auth_ctx_t free_cert_ctx, void_completion_t completion, const void *data)
+{
+    struct buffer auth;
+    auth_info *authinfo;
+    if(scheme==NULL || zh==NULL || get_cert == NULL)
+        return ZBADARGUMENTS;
+
+    if (is_unrecoverable(zh))
+        return ZINVALIDSTATE;
+
+    // [ZOOKEEPER-800] zoo_add_auth should return ZINVALIDSTATE if
+    // the connection is closed.
+    if (zoo_state(zh) == 0) {
+        return ZINVALIDSTATE;
+    }
+
+    auth.buff = 0;
+    auth.len = 0;
+
+    zoo_lock_auth(zh);
+    authinfo = (auth_info*) malloc(sizeof(auth_info));
+    authinfo->scheme=strdup(scheme);
+    authinfo->auth=auth;
+    authinfo->completion=completion;
+    authinfo->get_cert=get_cert;
+    authinfo->get_cert_ctx = get_cert_ctx;
+    authinfo->free_cert = free_cert_ctx;
     authinfo->data=data;
     authinfo->next = NULL;
     add_last_auth(&zh->auth_h, authinfo);

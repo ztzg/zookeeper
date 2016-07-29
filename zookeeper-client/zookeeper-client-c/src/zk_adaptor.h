@@ -121,6 +121,9 @@ typedef struct _auth_info {
     void_completion_t completion;
     const char* data;
     struct _auth_info *next;
+    get_auth_cert_t get_cert;
+    void* get_cert_ctx;
+    free_auth_ctx_t free_cert;
 } auth_info;
 
 /**

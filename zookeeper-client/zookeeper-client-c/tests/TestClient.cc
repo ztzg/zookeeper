@@ -222,6 +222,7 @@ class Zookeeper_simpleSystem : public CPPUNIT_NS::TestFixture
     CPPUNIT_TEST(testAcl);
     CPPUNIT_TEST(testChroot);
     CPPUNIT_TEST(testAuth);
+    CPPUNIT_TEST(testAuthcb);
     CPPUNIT_TEST(testHangingClient);
     CPPUNIT_TEST(testWatcherAutoResetWithGlobal);
     CPPUNIT_TEST(testWatcherAutoResetWithLocal);
@@ -775,6 +776,41 @@ public:
         startServer();
         CPPUNIT_ASSERT(ctx5.waitForConnected(zk));
         CPPUNIT_ASSERT(zookeeper_get_connected_host(zk, &addr, &addr_len) != NULL);
+    }
+
+    static buffer authCallback(const char *hostname, const void* ctx) {
+        CPPUNIT_ASSERT(strcmp(hostname, (char*)ctx) == 0);
+        struct buffer auth;
+        auth.buff = "x";
+        auth.len = 1;
+        return auth;
+    }
+
+    static void free_auth_ctx(void* ctx)
+    {
+        free(ctx);
+    }
+
+    void testAuthcb() {
+        int rc;
+        count = 0;
+        watchctx_t ctx1, ctx2, ctx3, ctx4;
+        zhandle_t *zk = createClient(&ctx1);
+        rc = zoo_add_auth_cb(0, "", authCallback, 0, free_auth_ctx, voidCompletion, (void*)-1);
+        CPPUNIT_ASSERT_EQUAL((int) ZBADARGUMENTS, rc);
+		
+        rc = zoo_add_auth_cb(zk, 0, authCallback, 0, free_auth_ctx, voidCompletion, (void*)-1);
+        CPPUNIT_ASSERT_EQUAL((int) ZBADARGUMENTS, rc);
+
+        rc = zoo_add_auth_cb(zk, "kerberos", NULL, 0, free_auth_ctx, voidCompletion, (void*)ZOK);
+        CPPUNIT_ASSERT_EQUAL((int) ZBADARGUMENTS, rc);
+		
+        // auth as pat, create /tauth1, close session
+        rc = zoo_add_auth_cb(zk, "digest", authCallback, (void*)"127.0.0.1", 0, voidCompletion, (void*)ZOK);
+        CPPUNIT_ASSERT_EQUAL((int) ZOK, rc);
+        waitForVoidCompletion(3);
+
+        CPPUNIT_ASSERT(count == 0);
     }
 
     void testCreate() {

@@ -1764,6 +1764,52 @@ ZOOAPI int zoo_add_auth(zhandle_t *zh,const char* scheme,const char* cert,
 	int certLen, void_completion_t completion, const void *data);
 
 /**
+ * \brief signature of an authentication callback function
+ *
+ * This method will be invoked before an authentication token is sent
+ * \param hostname The name of the server host where the client will actually connect
+ * \param ctx the context which is coming from add_auth_cb
+ */
+ typedef struct buffer (*get_auth_cert_t)(const char *hostname, const void* ctx);
+
+/**
+ * \brief signature of an authentication context free function
+ *
+ * This method will be invoked on zookeeper close to free get_cert_ctx
+ * \param ctx the context which is coming from add_auth_cb
+ */
+ typedef void (*free_auth_ctx_t)(void* ctx);
+
+/**
+ * \brief specify application credentials.
+ *
+ * The application calls this function to specify its credentials for purposes
+ * of authentication. The server will use the security provider specified by
+ * the scheme parameter to authenticate the client connection. If the
+ * authentication request has failed:
+ * - the server connection is dropped
+ * - the watcher is called with the ZOO_AUTH_FAILED_STATE value as the state
+ * parameter.
+ * \param zh the zookeeper handle obtained by a call to \ref zookeeper_init
+ * \param scheme the id of authentication scheme.
+ * \param get_cert callbakc to get the credentials
+ * \param get_cert_ctx the context which will be passed always to get_cert
+ * \param completion the routine to invoke when the request completes. One of
+ * the following result codes may be passed into the completion callback:
+ * ZOK operation completed successfully
+ * ZAUTHFAILED authentication failed
+ * \param data the data that will be passed to the completion routine when the
+ * function completes.
+ * \return ZOK on success or one of the following errcodes on failure:
+ * ZBADARGUMENTS - invalid input parameters
+ * ZINVALIDSTATE - zhandle state is either ZOO_SESSION_EXPIRED_STATE or ZOO_AUTH_FAILED_STATE
+ * ZMARSHALLINGERROR - failed to marshall a request; possibly, out of memory
+ * ZSYSTEMERROR - a system error occured
+ */
+ ZOOAPI int zoo_add_auth_cb(zhandle_t *zh, const char* scheme, get_auth_cert_t get_cert, void* get_cert_ctx,
+    free_auth_ctx_t free_cert_ctx, void_completion_t completion, const void *data);
+
+/**
  * \brief checks if the current zookeeper connection state can't be recovered.
  *
  *  The application must close the zhandle and try to reconnect.
