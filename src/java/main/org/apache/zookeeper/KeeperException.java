@@ -139,6 +139,8 @@ public abstract class KeeperException extends Exception {
                 return new EphemeralOnLocalSessionException();
             case NOWATCHER:
                 return new NoWatcherException();
+            case QUOTAEXCEEDED:
+                return new QuotaExceededException();
             case OK:
             default:
                 throw new IllegalArgumentException("Invalid exception code");
@@ -379,6 +381,8 @@ public abstract class KeeperException extends Exception {
         AUTHFAILED (AuthFailed),
         /** Session moved to another server, so operation is ignored */
         SESSIONMOVED (-118),
+        /** Quota has been exceeded */
+        QUOTAEXCEEDED (-130),
         /** State-changing request is passed to read-only server */
         NOTREADONLY (-119),
         /** Attempt to create ephemeral node on a local session */
@@ -463,6 +467,8 @@ public abstract class KeeperException extends Exception {
                 return "Invalid callback";
             case SESSIONMOVED:
                 return "Session moved";
+            case QUOTAEXCEEDED:
+                return "QuotaExceeded";
             case NOTREADONLY:
                 return "Not a read-only call";
             case EPHEMERALONLOCALSESSION:
@@ -744,6 +750,51 @@ public abstract class KeeperException extends Exception {
     public static class SessionMovedException extends KeeperException {
         public SessionMovedException() {
             super(Code.SESSIONMOVED);
+        }
+    }
+
+    /**
+     * 
+     * @see Code#QUOTAEXCEEDED
+     */
+    public static class QuotaExceededException extends KeeperException {
+        private String limit;
+        private String stat;
+        
+        public QuotaExceededException() {
+            super(Code.QUOTAEXCEEDED);
+        }
+    
+        public QuotaExceededException(String path) {
+            super(Code.QUOTAEXCEEDED, path);
+        }
+        
+        public QuotaExceededException(String path, String limit, String stat) {
+            super(Code.QUOTAEXCEEDED, path);
+            
+            this.limit = limit;
+            this.stat = stat;
+        }
+
+        public String getLimit() {
+            return this.limit;
+        }
+
+        public String getStat() {
+            return this.stat;
+        }
+
+        @Override
+        public String getMessage() {
+            if (getPath() == null) {
+                return "KeeperErrorCode = " + getCodeMessage(code());
+            }
+            
+            if(limit != null && stat != null){
+                return "KeeperErrorCode = " + getCodeMessage(code()) + " [limit=" + limit + ", current=" + stat + "] for " + getPath();
+            }
+                
+            return "KeeperErrorCode = " + getCodeMessage(code()) + " for " + getPath();
         }
     }
 

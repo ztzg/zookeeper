@@ -955,6 +955,25 @@ server.3=zoo3:2888:3888</programlisting>
               feature. Default is "true"</para>
             </listitem>
           </varlistentry>
+
+          <varlistentry>
+            <term>enforceQuotaLimit</term>
+
+            <listitem>
+              <para>(Java system property: <emphasis
+              role="bold">zookeeper.enforceQuotaLimit</emphasis>)</para>
+
+              <para><emphasis role="bold">New in 3.4.?, 3.5.?:</emphasis>
+              When enabled, ZooKeeper will send back an error if an operation
+              would violate the quota set on the node. The error is translated
+              to QuotaExceededException in the java client.
+              If the option is disabled only a warning is logged for violation.
+              Enable the option by settting it to "yes".
+              By the defaiult the option is set to "no" to maintain backward 
+              compatibility.</para>
+            </listitem>
+          </varlistentry>
+
         </variablelist>
       </section>
 

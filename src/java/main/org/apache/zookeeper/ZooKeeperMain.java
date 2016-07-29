@@ -606,6 +606,8 @@ public class ZooKeeperMain {
             System.err.println("Arguments are not valid : "+e.getPath());
         }catch (KeeperException.BadVersionException e) {
             System.err.println("version No is not valid : "+e.getPath());
+        } catch (KeeperException.QuotaExceededException e) {
+            System.err.println("Quota exceeded on: " + e.getPath() + " limit: " + e.getLimit() + " stat: " + e.getStat());
         }catch (KeeperException.ReconfigInProgress e) {
             System.err.println("Another reconfiguration is in progress -- concurrent " +
                    "reconfigs not supported (yet)");

@@ -4245,6 +4245,8 @@ const char* zerror(int c)
       return "(not error) no server responses to process";
     case ZSESSIONMOVED:
       return "session moved to another server, so operation is ignored";
+    case ZQUOTAEXCEEDED:
+      return "the quota for the rootnode is exceeded, so operation is ignored";
     case ZNOTREADONLY:
       return "state-changing request is passed to read-only server";
    case ZNEWCONFIGNOQUORUM:

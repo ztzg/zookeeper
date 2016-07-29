@@ -25,6 +25,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
+import org.apache.zookeeper.KeeperException.QuotaExceededException;
 import org.apache.zookeeper.Quotas;
 import org.apache.zookeeper.StatsTrack;
 import org.apache.zookeeper.WatchedEvent;
@@ -220,6 +221,10 @@ public class DataTree {
      */
     private DataNode configDataNode = new DataNode(new byte[0], -1L, new StatPersisted());
 
+    /**
+     * enforce quota limits if true
+     */
+    private final boolean enforceQuotaLimit = System.getProperty("zookeeper.enforceQuotaLimit", "no").equals("yes");
     
     public DataTree() {
         /* Rather than fight it, let root have an alias */
@@ -309,24 +314,6 @@ public class DataTree {
             updatedStat.setCount(updatedStat.getCount() + diff);
             node.data = updatedStat.toString().getBytes();
         }
-        // now check if the counts match the quota
-        String quotaNode = Quotas.quotaPath(lastPrefix);
-        node = nodes.get(quotaNode);
-        StatsTrack thisStats = null;
-        if (node == null) {
-            // should not happen
-            LOG.error("Missing count node for quota " + quotaNode);
-            return;
-        }
-        synchronized (node) {
-            thisStats = new StatsTrack(new String(node.data));
-        }
-        if (thisStats.getCount() > -1 && (thisStats.getCount() < updatedStat.getCount())) {
-            LOG
-            .warn("Quota exceeded: " + lastPrefix + " count="
-                    + updatedStat.getCount() + " limit="
-                    + thisStats.getCount());
-        }
     }
 
     /**
@@ -354,25 +341,6 @@ public class DataTree {
             updatedStat.setBytes(updatedStat.getBytes() + diff);
             node.data = updatedStat.toString().getBytes();
         }
-        // now check if the bytes match the quota
-        String quotaNode = Quotas.quotaPath(lastPrefix);
-        node = nodes.get(quotaNode);
-        if (node == null) {
-            // should never be null but just to make
-            // findbugs happy
-            LOG.error("Missing quota node for bytes " + quotaNode);
-            return;
-        }
-        StatsTrack thisStats = null;
-        synchronized (node) {
-            thisStats = new StatsTrack(new String(node.data));
-        }
-        if (thisStats.getBytes() > -1 && (thisStats.getBytes() < updatedStat.getBytes())) {
-            LOG
-            .warn("Quota exceeded: " + lastPrefix + " bytes="
-                    + updatedStat.getBytes() + " limit="
-                    + thisStats.getBytes());
-        }
     }
 
     /**
@@ -391,11 +359,11 @@ public class DataTree {
      * @param time
      * @throws NodeExistsException 
      * @throws NoNodeException 
-     * @throws KeeperException
+     * @throws QuotaExceededException
      */
     public void createNode(final String path, byte data[], List<ACL> acl,
             long ephemeralOwner, int parentCVersion, long zxid, long time)
-    		throws NoNodeException, NodeExistsException {
+    		throws NoNodeException, NodeExistsException, QuotaExceededException {
     	createNode(path, data, acl, ephemeralOwner, parentCVersion, zxid, time, null);
     }
     
@@ -417,12 +385,13 @@ public class DataTree {
      * 			  A Stat object to store Stat output results into.
      * @throws NodeExistsException 
      * @throws NoNodeException 
-     * @throws KeeperException
+     * @throws QuotaExceededException
      */
     public void createNode(final String path, byte data[], List<ACL> acl,
             long ephemeralOwner, int parentCVersion, long zxid, long time, Stat outputStat)
             throws KeeperException.NoNodeException,
-            KeeperException.NodeExistsException {
+            KeeperException.NodeExistsException, 
+            KeeperException.QuotaExceededException {
         int lastSlash = path.lastIndexOf('/');
         String parentName = path.substring(0, lastSlash);
         String childName = path.substring(lastSlash + 1);
@@ -444,6 +413,10 @@ public class DataTree {
             if (children != null && children.contains(childName)) {
                 throw new KeeperException.NodeExistsException();
             }
+
+            // check if any of the quotas are violated
+            checkCountQuota(path);
+            checkBytesQuota(path, data == null ? 0 : data.length);
 
             if (parentCVersion == -1) {
                 parentCVersion = parent.stat.getCversion();
@@ -568,15 +541,19 @@ public class DataTree {
     }
 
     public Stat setData(String path, byte data[], int version, long zxid,
-            long time) throws KeeperException.NoNodeException {
+            long time) throws KeeperException.NoNodeException, KeeperException.QuotaExceededException {
         Stat s = new Stat();
         DataNode n = nodes.get(path);
         if (n == null) {
             throw new KeeperException.NoNodeException();
         }
         byte lastdata[] = null;
+        long diff = 0;
         synchronized (n) {
             lastdata = n.data;
+            // Check if bytes data quota is violated
+            diff = (data == null ? 0 : data.length) - (lastdata == null ? 0 : lastdata.length);
+            checkBytesQuota(path, diff);
             n.data = data;
             n.stat.setMtime(time);
             n.stat.setMzxid(zxid);
@@ -586,8 +563,7 @@ public class DataTree {
         // now update if the path is in a quota subtree.
         String lastPrefix = getMaxPrefixWithQuota(path);
         if(lastPrefix != null) {
-          this.updateBytes(lastPrefix, (data == null ? 0 : data.length)
-              - (lastdata == null ? 0 : lastdata.length));
+          this.updateBytes(lastPrefix, diff);
         }
         dataWatches.triggerWatch(path, EventType.NodeDataChanged);
         return s;
@@ -813,6 +789,8 @@ public class DataTree {
                 case OpCode.setData:
                     SetDataTxn setDataTxn = (SetDataTxn) txn;
                     rc.path = setDataTxn.getPath();
+                    // save current stat as setDate may throw QuotaExceeded exception
+                    rc.stat = statNode(setDataTxn.getPath(), null);
                     rc.stat = setData(setDataTxn.getPath(), setDataTxn
                             .getData(), setDataTxn.getVersion(), header
                             .getZxid(), header.getTime());
@@ -1411,5 +1389,109 @@ public class DataTree {
             break;
         }
         return removed;
+    }
+
+    public void checkCountQuota(String path) throws NoNodeException, QuotaExceededException {
+        
+        // check if quota is defined for this node
+        String lastPrefix = pTrie.findMaxPrefix(path);
+        if (!rootZookeeper.equals(lastPrefix) && !("".equals(lastPrefix))) {
+        
+            String statNode = Quotas.statPath(lastPrefix);
+            DataNode s_node = nodes.get(statNode);
+            StatsTrack s_track = null;
+            if (s_node == null) {
+                // should not happen
+                LOG.error("Missing stat node for count " + statNode);
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.NoNodeException(statNode);
+                } else {
+                    return;
+                }
+            }
+            synchronized (s_node) {
+                s_track = new StatsTrack(new String(s_node.data));
+            }
+            // now check if the counts match the quota
+            String quotaNode = Quotas.quotaPath(lastPrefix);
+            DataNode q_node = nodes.get(quotaNode);
+            StatsTrack q_track = null;
+            if (q_node == null) {
+                // should not happen
+                LOG.error("Missing count node for quota " + quotaNode);
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.NoNodeException(quotaNode);
+                } else {
+                    return;
+                }
+            }
+            synchronized (q_node) {
+                q_track = new StatsTrack(new String(q_node.data));
+            }
+            
+            // check if 1 new child node fits into quota
+            if (q_track.getCount() > -1 && q_track.getCount() < s_track.getCount()+1) {
+                LOG
+                        .warn("Quota exceeded: " + lastPrefix + " count="
+                                + (s_track.getCount()+1) + " limit="
+                                + q_track.getCount());
+                
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.QuotaExceededException(lastPrefix, Long.toString(q_track.getCount()), s_track.getCount() + " node(s)");
+                }
+            }
+        }
+    }
+    
+    public void checkBytesQuota(String path, long diff) throws NoNodeException, QuotaExceededException {
+        
+        // check if quota is defined for this node
+        String lastPrefix = pTrie.findMaxPrefix(path);
+        if (!rootZookeeper.equals(lastPrefix) && !("".equals(lastPrefix))) {
+        
+            String statNode = Quotas.statPath(lastPrefix);
+            DataNode s_node = nodes.get(statNode);
+            StatsTrack s_track = null;
+            if (s_node == null) {
+                // should not happen
+                LOG.error("Missing stat node for count " + statNode);
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.NoNodeException(statNode);
+                } else {
+                    return;
+                }
+            }
+            synchronized (s_node) {
+                s_track = new StatsTrack(new String(s_node.data));
+            }
+            // now check if the counts match the quota
+            String quotaNode = Quotas.quotaPath(lastPrefix);
+            DataNode q_node = nodes.get(quotaNode);
+            StatsTrack q_track = null;
+            if (q_node == null) {
+                // should not happen
+                LOG.error("Missing count node for quota " + quotaNode);
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.NoNodeException(quotaNode);
+                } else {
+                    return;
+                }
+            }
+            synchronized (q_node) {
+                q_track = new StatsTrack(new String(q_node.data));
+            }
+            
+            // check if 1 new child node fits into quota
+            if (q_track.getBytes() > -1 && q_track.getBytes() < s_track.getBytes()+diff) {
+                LOG
+                        .warn("Quota exceeded: " + lastPrefix + " bytes="
+                                + (s_track.getBytes()+diff) + " limit="
+                                + q_track.getBytes());
+                
+                if (enforceQuotaLimit) {
+                    throw new KeeperException.QuotaExceededException(lastPrefix, Long.toString(q_track.getBytes()), s_track.getBytes() + " byte(s)");
+                }
+            }
+        }
     }
 }
