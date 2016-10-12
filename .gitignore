@@ -14,3 +14,4 @@ src/dotnet/ZooKeeperNet/Generated/*.cs
 src/dotnet/ZooKeeperNet/_Reshaper
 src/dotnet/ZooKeeperNet/bin
 src/dotnet/ZooKeeperNet/obj
+/src/dotnet/packages
