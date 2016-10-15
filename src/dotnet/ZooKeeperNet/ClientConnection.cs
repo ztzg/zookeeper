@@ -399,8 +399,15 @@ namespace ZooKeeperNet
                 }
                 finally
                 {
-                    producer.Dispose();
-                    consumer.Dispose();
+                    if (null != producer)
+                    {
+                        producer.Dispose();
+                    }
+                    
+                    if (null != consumer)
+                    {
+                        consumer.Dispose();
+                    }
                 }
 
             }

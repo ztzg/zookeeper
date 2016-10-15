@@ -303,7 +303,11 @@
         {
             get
             {
-                return cnxn.SessionId;
+                if (null != cnxn)
+                {
+                    return cnxn.SessionId;
+                }
+                return 0;
             }
         }
 
