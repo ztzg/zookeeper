@@ -29,7 +29,9 @@
 #include <sys/time.h>                   /* gettimeofday() */
 
 #define THREADED
+#define HAVE_CYRUS_SASL_H
 #include <zookeeper/zookeeper.h>
+#undef HAVE_CYRUS_SASL_H
 #undef THREADED
 
 #include "build/check_zk_version.h"
@@ -760,6 +762,11 @@ zk_new(package, hosts, ...)
         char *hosts
     PREINIT:
         int recv_timeout = DEFAULT_RECV_TIMEOUT_MSEC;
+        zoo_sasl_params_t sasl_params = { 0 };
+        const char *sasl_user = NULL;
+        const char *sasl_realm = NULL;
+        const char *sasl_password_file = NULL;
+        int use_sasl = 0;
         const clientid_t *client_id = NULL;
         zk_t *zk;
         zk_handle_t *handle;
@@ -794,12 +801,45 @@ zk_new(package, hosts, ...)
                     Perl_croak(aTHX_ "invalid session ID");
                 }
             }
+            /* TODO(ddiederen): Move those to a sub-hash. */
+            else if (strcaseEQ(key, "service")) {
+                sasl_params.service = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+            else if (strcaseEQ(key, "host")) {
+                sasl_params.host = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+            else if (strcaseEQ(key, "mechlist")) {
+                sasl_params.mechlist = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+            else if (strcaseEQ(key, "user")) {
+                sasl_user = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+            else if (strcaseEQ(key, "realm")) {
+                sasl_realm = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+            else if (strcaseEQ(key, "password_file")) {
+                sasl_password_file = SvPV_nolen(ST(i + 1));
+                use_sasl = 1;
+            }
+        }
+
+        if (use_sasl) {
+            /* KLUDGE: Leaks a reference count.  Authen::SASL::XS does
+               the same, though.  TODO(ddiederen): Fix. */
+            sasl_client_init(NULL);
+            sasl_params.callbacks = zoo_sasl_make_basic_callbacks(sasl_user,
+                sasl_realm, sasl_password_file);
         }
 
         Newxz(zk, 1, zk_t);
 
-        zk->handle = zookeeper_init(hosts, NULL, recv_timeout,
-                                    client_id, NULL, 0);
+        zk->handle = zookeeper_init_sasl(hosts, NULL, recv_timeout,
+            client_id, NULL, 0, NULL, use_sasl ? &sasl_params : NULL);
 
         if (!zk->handle) {
             Safefree(zk);
