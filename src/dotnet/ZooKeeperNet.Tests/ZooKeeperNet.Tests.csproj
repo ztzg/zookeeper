@@ -66,6 +66,9 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\lib\pnunit.framework.dll</HintPath>
     </Reference>
+    <Reference Include="S22.Sasl">
+      <HintPath>..\lib\S22.Sasl.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
@@ -77,6 +80,7 @@
     <Compile Include="ACLRootTests.cs" />
     <Compile Include="AssemblyFixture.cs" />
     <Compile Include="RecoveryTest.cs" />
+    <Compile Include="SaslTests.cs" />
     <Compile Include="SocketTests.cs" />
     <Compile Include="ChrootTests.cs" />
     <Compile Include="ClientTests.cs" />
