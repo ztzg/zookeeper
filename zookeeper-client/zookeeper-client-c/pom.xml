@@ -109,6 +109,7 @@
                 <CALLER>ANT</CALLER>
               </environmentVariables>
               <arguments>
+                <argument>--with-sasl=${c-client-sasl}</argument>
                 <argument>--prefix=${project.build.directory}/c</argument>
                 <argument>--enable-gcov</argument>
               </arguments>

@@ -21,7 +21,7 @@ ZOOPORT=22181
 
 if [ "x$1" == "x" ]
 then
-    echo "USAGE: $0 startClean|start|startReadOnly|stop hostPorts"
+    echo "USAGE: $0 startClean|start|startReadOnly|startRequireSASLAuth [jaasConf] [readOnly]|stop hostPorts"
     exit 2
 fi
 
@@ -109,9 +109,23 @@ then
 fi
 
 PROPERTIES="-Dzookeeper.extendedTypesEnabled=true -Dznode.container.checkIntervalMs=100"
+if [ "x$1" == "xstartRequireSASLAuth" ]
+then
+    PROPERTIES="-Dzookeeper.sessionRequireClientSASLAuth=true $PROPERTIES"
+    if [ "x$2" != "x" ]
+    then
+        PROPERTIES="$PROPERTIES -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider"
+        PROPERTIES="$PROPERTIES -Djava.security.auth.login.config=$2"
+    fi
+    if [ "x$3" != "x" ]
+    then
+        PROPERTIES="-Dreadonlymode.enabled=true $PROPERTIES"
+        set -- "${1}ReadOnly"
+    fi
+fi
 
 case $1 in
-start|startClean)
+start|startClean|startRequireSASLAuth)
     if [ "x${base_dir}" == "x" ]
     then
         mkdir -p /tmp/zkdata
@@ -159,7 +173,7 @@ start|startClean)
     fi
 
     ;;
-startReadOnly)
+startReadOnly|startRequireSASLAuthReadOnly)
     if [ "x${base_dir}" == "x" ]
     then
         echo "this target is for unit tests only"
