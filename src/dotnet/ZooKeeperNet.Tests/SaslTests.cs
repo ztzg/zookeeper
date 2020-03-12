@@ -121,6 +121,7 @@ namespace ZooKeeperNet.Tests
             using (var zk = CreateClientWithSasl(new S22SaslClient()))
             {
                 zk.GetData(name, false, new Stat());
+                zk.Delete(name, -1);
             }
         }
     }
