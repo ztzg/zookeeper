@@ -89,7 +89,7 @@ namespace ZooKeeperNet.Tests
         }
     }
 
-    [TestFixture]
+    [TestFixture, Explicit]
     public class SaslTests : AbstractZooKeeperTests
     {
         [Test]
