@@ -54,9 +54,8 @@ namespace ZooKeeperNet.Tests
             return new ZooKeeper(address, new TimeSpan(0, 0, 0, 10000), watcher);
         }
 
-        protected virtual ZooKeeper CreateClientWithSasl(ISaslClient saslClient)
+        protected virtual ZooKeeper CreateClientWithSasl(IWatcher watcher, ISaslClient saslClient)
         {
-            CountdownWatcher watcher = new CountdownWatcher();
             // "Only" use a 10s session timeout as failed tests can
             // otherwise spin for a very long time in the client's
             // Dispose method.
