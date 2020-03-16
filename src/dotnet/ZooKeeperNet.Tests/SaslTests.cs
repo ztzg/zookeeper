@@ -26,7 +26,7 @@ namespace ZooKeeperNet.Tests
     using System.Collections.Generic;
     using System.Threading;
 
-    class S22SaslClient : ISaslClient
+    internal class S22SaslClient : ISaslClient
     {
         // The following must be configured in zoo.conf:
         //
@@ -46,8 +46,8 @@ namespace ZooKeeperNet.Tests
         //
         // See https://cwiki.apache.org/confluence/display/ZOOKEEPER/Client-Server+mutual+authentication#Client-Servermutualauthentication-ServerConfiguration
         // for additional details.
-        private const string Username = "bob";
-        private const string Password = "bobsecret";
+        public string Username { get; set; } = "bob";
+        public string Password { get; set; } = "bobsecret";
 
         private SaslMechanism m = null;
 
@@ -174,6 +174,26 @@ namespace ZooKeeperNet.Tests
 
                 zk.GetData(name, false, new Stat());
                 zk.Delete(name, -1);
+            }
+        }
+
+        [Test]
+        public void testSaslBadCredentials()
+        {
+            var saslClient = new S22SaslClient()
+            {
+                Password = "evewashere"
+            };
+
+            var watcher = new StateWatcher(KeeperState.AuthFailed, true);
+            using (var zk = CreateClientWithSasl(watcher, saslClient))
+            {
+                Assert.IsTrue(watcher.WaitSignaled(maxWaitMs));
+                Assert.AreEqual(ZooKeeper.States.AUTH_FAILED, zk.State);
+                Assert.IsFalse(zk.State.IsAlive());
+
+                // We must have been connected before failing authentication.
+                Assert.IsTrue(watcher.Observed.Contains(KeeperState.SyncConnected));
             }
         }
     }
