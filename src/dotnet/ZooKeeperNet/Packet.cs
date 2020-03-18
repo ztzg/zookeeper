@@ -35,7 +35,6 @@ namespace ZooKeeperNet
         private string serverPath;
         internal ReplyHeader replyHeader;
         internal IRecord response;
-        private int finished;
         internal ZooKeeper.WatchRegistration watchRegistration;
         internal readonly byte[] data;
         public readonly DateTime DateCreated;
@@ -109,7 +108,7 @@ namespace ZooKeeperNet
 
             sb.Append("  clientPath:").Append(clientPath);
             sb.Append("  serverPath:").Append(serverPath);
-            sb.Append("    finished:").Append(finished);
+            sb.Append("    finished:").Append(mreslim.IsSet);
             sb.Append("     header::").Append(header);
             sb.Append("replyHeader::").Append(replyHeader);
             sb.Append("    request::").Append(request);
