@@ -533,7 +533,7 @@ namespace ZooKeeperNet
             {
                 if (!ClientConnection.DisableAutoWatchReset && (!zooKeeper.DataWatches.IsEmpty() || !zooKeeper.ExistWatches.IsEmpty() || !zooKeeper.ChildWatches.IsEmpty()))
                 {
-                    var sw = new SetWatches(lastZxid, zooKeeper.DataWatches, zooKeeper.ExistWatches, zooKeeper.ChildWatches);
+                    var sw = new SetWatches(lastZxid, prependChroot(zooKeeper.DataWatches), prependChroot(zooKeeper.ExistWatches), prependChroot(zooKeeper.ChildWatches));
                     var h = new RequestHeader();
                     h.Type = (int)OpCode.SetWatches;
                     h.Xid = -8;
@@ -735,6 +735,29 @@ namespace ZooKeeperNet
                 p.watchRegistration.Register(p.replyHeader.Err);
 
             p.Finished = true;
+        }
+
+        private IEnumerable<string> prependChroot(IEnumerable<string> paths)
+        {
+            string chrootPath = conn.ChrootPath;
+
+            if (string.IsNullOrEmpty(chrootPath))
+            {
+                return paths;
+            }
+
+            return paths.Select(clientPath =>
+            {
+                // handle clientPath = "/"
+                if (clientPath.Length == 1)
+                {
+                    return chrootPath;
+                }
+                else
+                {
+                    return chrootPath + clientPath;
+                }
+            });
         }
 
         private int isDisposed = 0;
