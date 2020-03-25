@@ -20,6 +20,7 @@ namespace ZooKeeperNet
     {
         private static readonly ILog LOG = LogManager.GetLogger(typeof(ClientConnectionRequestProducer));
         private const string RETRY_CONN_MSG = ", closing socket connection and attempting reconnect";
+        private const string AUTH_FAILED_MSG = ", closing socket connection and setting AUTH_FAILED state";
 
         private readonly ClientConnection conn;
         private readonly ZooKeeper zooKeeper;
@@ -186,7 +187,13 @@ namespace ZooKeeperNet
                     else
                     {
                         // this is ugly, you have a better way speak up
-                        if (e is KeeperException.SessionExpiredException)
+                        if (e is KeeperException.AuthFailedException)
+                        {
+                            LOG.InfoFormat("{0}{1}", e.Message, AUTH_FAILED_MSG);
+                            // AUTH_FAILED state, causing IsAlive() => false.
+                            zooKeeper.State = ZooKeeper.States.AUTH_FAILED;
+                        }
+                        else if (e is KeeperException.SessionExpiredException)
                             LOG.InfoFormat("{0}, closing socket connection", e.Message);
                         else if (e is SessionTimeoutException)
                             LOG.InfoFormat("{0}{1}", e.Message, RETRY_CONN_MSG);
@@ -202,6 +209,10 @@ namespace ZooKeeperNet
                         if(zooKeeper.State.IsAlive())
                         {
                             conn.consumer.QueueEvent(new WatchedEvent(KeeperState.Disconnected, EventType.None, null));
+                        }
+                        else if(zooKeeper.State.IsAuthFailed())
+                        {
+                            conn.consumer.QueueEvent(new WatchedEvent(KeeperState.AuthFailed, EventType.None, null));
                         }
                     }
                 }
@@ -460,8 +471,8 @@ namespace ZooKeeperNet
                     try
                     {
                         bool lastPacket = false;
-                        
-                        while (true)
+
+                        do
                         {
                             RequestHeader h = new RequestHeader();
                             ReplyHeader r = new ReplyHeader();
@@ -505,11 +516,19 @@ namespace ZooKeeperNet
                                 }
                             }
                         }
+                        // We must have received a 'ConnectResponse' by
+                        // now, as we have waited for 1+ packets.
+                        while (zooKeeper.State.IsConnected());
                     }
                     finally
                     {
                         conn.saslClient.Finish();
                     }
+                }
+
+                if (zooKeeper.State.IsConnected())
+                {
+                    conn.consumer.QueueEvent(new WatchedEvent(KeeperState.SaslAuthenticated, EventType.None, null));
                 }
             }
 

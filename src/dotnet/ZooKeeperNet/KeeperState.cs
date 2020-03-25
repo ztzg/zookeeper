@@ -23,6 +23,8 @@
         Disconnected = 0,
         NoSyncConnected = 1,
         SyncConnected = 3,
+        AuthFailed = 4,
+        SaslAuthenticated = 6,
         Expired = -112
     }
 }

@@ -198,6 +198,16 @@
                 return this != CLOSED && this != AUTH_FAILED;
             }
 
+            public bool IsConnected()
+            {
+                return this == CONNECTED; // || this == CONNECTEDREADONLY
+            }
+
+            public bool IsAuthFailed()
+            {
+                return this == AUTH_FAILED;
+            }
+
             public bool Equals(States other)
             {
                 if (ReferenceEquals(null, other)) return false;

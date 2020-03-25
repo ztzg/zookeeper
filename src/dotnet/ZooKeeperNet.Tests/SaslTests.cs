@@ -24,8 +24,9 @@ namespace ZooKeeperNet.Tests
     using S22.Sasl;
     using System.Net;
     using System.Collections.Generic;
+    using System.Threading;
 
-    class S22SaslClient : ISaslClient
+    internal class S22SaslClient : ISaslClient
     {
         // The following must be configured in zoo.conf:
         //
@@ -45,8 +46,8 @@ namespace ZooKeeperNet.Tests
         //
         // See https://cwiki.apache.org/confluence/display/ZOOKEEPER/Client-Server+mutual+authentication#Client-Servermutualauthentication-ServerConfiguration
         // for additional details.
-        private const string Username = "bob";
-        private const string Password = "bobsecret";
+        public string Username { get; set; } = "bob";
+        public string Password { get; set; } = "bobsecret";
 
         private SaslMechanism m = null;
 
@@ -89,24 +90,72 @@ namespace ZooKeeperNet.Tests
         }
     }
 
-    [TestFixture]
+    internal class StateWatcher : IWatcher
+    {
+        private EventWaitHandle ewh = new EventWaitHandle(false, EventResetMode.ManualReset);
+
+        private KeeperState waitFor;
+        private IList<KeeperState> observed;
+
+        public StateWatcher(KeeperState waitFor, bool collectObserved = false)
+        {
+            this.waitFor = waitFor;
+            this.observed = collectObserved ? new List<KeeperState>() : null;
+        }
+
+        public void Process(WatchedEvent @event)
+        {
+            if (this.observed != null)
+            {
+                this.observed.Add(@event.State);
+            }
+
+            if (@event.State == waitFor)
+            {
+                ewh.Set();
+            }
+        }
+
+        public bool WaitSignaled(int ms)
+        {
+            return ewh.WaitOne(ms);
+        }
+
+        public IList<KeeperState> Observed 
+        { 
+            get 
+            { 
+                return observed;
+            }
+        }
+    }
+
+    [TestFixture, Explicit]
     public class SaslTests : AbstractZooKeeperTests
     {
+        private static readonly int maxWaitMs = 250;
+
         [Test]
         public void testSasl()
         {
             string name = "/" + Guid.NewGuid() + "sasltest";
 
-            using (var zk = CreateClientWithSasl(new S22SaslClient()))
+            var authWatcher = new StateWatcher(KeeperState.SaslAuthenticated);
+            using (var zk = CreateClientWithSasl(authWatcher, new S22SaslClient()))
             {
+                Assert.IsTrue(authWatcher.WaitSignaled(maxWaitMs));
+                
                 List<ACL> acl = new List<ACL>();
                 acl.Add(new ACL(Perms.ALL, new ZKId("sasl", "bob")));
 
                 Assert.AreEqual(name, zk.Create(name, new byte[0], acl, CreateMode.Persistent));
             }
 
-            using (var zk = CreateClient())
+            var connWatcher = new StateWatcher(KeeperState.SyncConnected);
+            using (var zk = CreateClient(connWatcher))
             {
+                Assert.IsTrue(connWatcher.WaitSignaled(maxWaitMs));
+
                 try
                 {
                     zk.GetData(name, false, new Stat());
@@ -118,9 +167,33 @@ namespace ZooKeeperNet.Tests
                 }
             }
 
-            using (var zk = CreateClientWithSasl(new S22SaslClient()))
+            var authWatcher2 = new StateWatcher(KeeperState.SaslAuthenticated);
+            using (var zk = CreateClientWithSasl(authWatcher2, new S22SaslClient()))
             {
+                Assert.IsTrue(authWatcher2.WaitSignaled(maxWaitMs));
+
                 zk.GetData(name, false, new Stat());
+                zk.Delete(name, -1);
+            }
+        }
+
+        [Test]
+        public void testSaslBadCredentials()
+        {
+            var saslClient = new S22SaslClient()
+            {
+                Password = "evewashere"
+            };
+
+            var watcher = new StateWatcher(KeeperState.AuthFailed, true);
+            using (var zk = CreateClientWithSasl(watcher, saslClient))
+            {
+                Assert.IsTrue(watcher.WaitSignaled(maxWaitMs));
+                Assert.AreEqual(ZooKeeper.States.AUTH_FAILED, zk.State);
+                Assert.IsFalse(zk.State.IsAlive());
+
+                // We must have been connected before failing authentication.
+                Assert.IsTrue(watcher.Observed.Contains(KeeperState.SyncConnected));
             }
         }
     }
