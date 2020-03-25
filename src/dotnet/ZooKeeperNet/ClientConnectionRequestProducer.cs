@@ -139,6 +139,10 @@ namespace ZooKeeperNet
                         if(conn.IsClosed || closing)
                             break;
 
+                        // Clean up the previous TCP connection if needed, and
+                        // reset the 'client' field.
+                        Cleanup();
+
                         StartConnect();
                         lastSend = now;
                     }
@@ -261,8 +265,8 @@ namespace ZooKeeperNet
 
         private void Cleanup()
         {
-            Cleanup(client);
-            client = null;
+            TcpClient tcpClient = Interlocked.Exchange(ref client, null);
+            Cleanup(tcpClient);
         }
 
         private void StartConnect()
@@ -357,8 +361,8 @@ namespace ZooKeeperNet
                 throw KeeperException.Create(KeeperException.Code.CONNECTIONLOSS);
             }
 
-            client = tempClient;
-            client.GetStream().BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, incomingBuffer);
+            Interlocked.Exchange(ref client, tempClient);
+            client.GetStream().BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, Tuple.Create(client, incomingBuffer));
             PrimeConnection();
         }
 
@@ -385,17 +389,27 @@ namespace ZooKeeperNet
             int len = 0;
             try
             {
-                if (client == null)
-                    return;
-                NetworkStream stream = client.GetStream();
+                Tuple<TcpClient, byte[]> state = (Tuple<TcpClient, byte[]>)ar.AsyncState;
+                TcpClient asyncClient = state.Item1;
+                byte[] bData = state.Item2;
+
+                NetworkStream stream = asyncClient.GetStream();
 
                 try
                 {
                     len = stream.EndRead(ar);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    LOG.Error(ex);
                 }
+
+                if (Interlocked.CompareExchange(ref client, asyncClient, asyncClient) != asyncClient)
+                {
+                    // there was a reconnect in the meantime on the sender thread; do nothing
+                    return;
+                }
+
                 if (len == 0) //server closed the connection...
                 {
                     LOG.Debug("TcpClient connection lost.");
@@ -406,7 +420,7 @@ namespace ZooKeeperNet
                     IsConnectionClosedByServer = true;
                     return;
                 }
-                byte[] bData = (byte[])ar.AsyncState;
+                
                 recvCount++;
 
                 if (bData == incomingBuffer) // if bData is incoming then surely it is a length information
@@ -416,7 +430,7 @@ namespace ZooKeeperNet
                     // get the length information from the stream
                     juteBuffer = new byte[ReadLength(bData)];
                     // try getting other info from the stream
-                    stream.BeginRead(juteBuffer, 0, juteBuffer.Length, ReceiveAsynch, juteBuffer);
+                    stream.BeginRead(juteBuffer, 0, juteBuffer.Length, ReceiveAsynch, Tuple.Create(asyncClient, juteBuffer));
                 }
                 else // not an incoming buffer then it is surely a zookeeper process information
                 {
@@ -425,19 +439,19 @@ namespace ZooKeeperNet
                         // haven't been initialized so read the authentication negotiation result
                         ReadConnectResult(bData);
                         // reading length information
-                        stream.BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, incomingBuffer);
+                        stream.BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, Tuple.Create(asyncClient, incomingBuffer));
                     }
                     else
                     {
                         currentLen += len;
                         if (juteBuffer.Length > currentLen) // stream haven't been completed so read any left bytes
-                            stream.BeginRead(juteBuffer, currentLen, juteBuffer.Length - currentLen, ReceiveAsynch, juteBuffer);
+                            stream.BeginRead(juteBuffer, currentLen, juteBuffer.Length - currentLen, ReceiveAsynch, Tuple.Create(asyncClient, juteBuffer));
                         else
                         {
                             // stream is complete so read the response
                             ReadResponse(bData);
                             // everything is fine, now read the stream again for length information
-                            stream.BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, incomingBuffer);
+                            stream.BeginRead(incomingBuffer, 0, incomingBuffer.Length, ReceiveAsynch, Tuple.Create(asyncClient, incomingBuffer));
                         }
                     }
                 }
@@ -538,7 +552,7 @@ namespace ZooKeeperNet
             {
                 if (!ClientConnection.DisableAutoWatchReset && (!zooKeeper.DataWatches.IsEmpty() || !zooKeeper.ExistWatches.IsEmpty() || !zooKeeper.ChildWatches.IsEmpty()))
                 {
-                    var sw = new SetWatches(lastZxid, zooKeeper.DataWatches, zooKeeper.ExistWatches, zooKeeper.ChildWatches);
+                    var sw = new SetWatches(lastZxid, prependChroot(zooKeeper.DataWatches), prependChroot(zooKeeper.ExistWatches), prependChroot(zooKeeper.ChildWatches));
                     var h = new RequestHeader();
                     h.Type = (int)OpCode.SetWatches;
                     h.Xid = -8;
@@ -740,6 +754,29 @@ namespace ZooKeeperNet
                 p.watchRegistration.Register(p.replyHeader.Err);
 
             p.Finished = true;
+        }
+
+        private IEnumerable<string> prependChroot(IEnumerable<string> paths)
+        {
+            string chrootPath = conn.ChrootPath;
+
+            if (string.IsNullOrEmpty(chrootPath))
+            {
+                return paths;
+            }
+
+            return paths.Select(clientPath =>
+            {
+                // handle clientPath = "/"
+                if (clientPath.Length == 1)
+                {
+                    return chrootPath;
+                }
+                else
+                {
+                    return chrootPath + clientPath;
+                }
+            });
         }
 
         private int isDisposed = 0;

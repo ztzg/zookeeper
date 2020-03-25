@@ -151,7 +151,7 @@ namespace ZooKeeperNet
                     {
                         zookeeper.Create(subPath, new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.Persistent);
                     }
-                    catch (KeeperException.NodeExistsException e)
+                    catch (KeeperException.NodeExistsException)
                     {
                         // ignore... someone else has created it since we checked
                     }

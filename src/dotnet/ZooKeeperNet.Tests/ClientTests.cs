@@ -21,6 +21,8 @@
     using System.Collections.Concurrent;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Net.Sockets;
+    using System.Reflection;
     using System.Text;
     using System.Threading;
     using log4net;
@@ -194,6 +196,48 @@
                     }
                 }
             }
+        }
+
+        [Test]
+        public void testChrootedWatchReestablishment()
+        {
+            string chroot = "/" + Guid.NewGuid() + "watchtest";
+            using (ZooKeeper zk1 = CreateClient())
+            {
+                Assert.AreEqual(chroot, zk1.Create(chroot, null, Ids.OPEN_ACL_UNSAFE, CreateMode.Persistent));
+            }
+
+            ZooKeeper zk = CreateClient(chroot);
+            MyWatcher watcher = new MyWatcher();
+
+            string name = "/watchtest";
+
+            zk.GetChildren("/", watcher);
+            zk.Create(name, null, Ids.OPEN_ACL_UNSAFE, CreateMode.Ephemeral);
+
+            WatchedEvent @event;
+            Assert.IsTrue(watcher.events.TryTake(out @event, TimeSpan.FromSeconds(3d)));
+            Assert.AreEqual("/", @event.Path);
+            Assert.AreEqual(EventType.NodeChildrenChanged, @event.Type);
+            Assert.AreEqual(KeeperState.SyncConnected, @event.State);
+
+            zk.GetChildren("/", watcher);
+
+            ClientConnection cnxn = (ClientConnection)zk.GetType().GetField("cnxn", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(zk);
+            ClientConnectionRequestProducer producer = (ClientConnectionRequestProducer)cnxn.GetType().GetField("producer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(cnxn);
+            TcpClient client = (TcpClient)producer.GetType().GetField("client", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(producer);
+
+            client.Close();
+            Thread.Sleep(100);
+
+            zk.Delete(name, -1);
+
+            Assert.IsTrue(watcher.events.TryTake(out @event, TimeSpan.FromSeconds(3d)));
+            Assert.AreEqual("/", @event.Path);
+            Assert.AreEqual(EventType.NodeChildrenChanged, @event.Type);
+            Assert.AreEqual(KeeperState.SyncConnected, @event.State);
+
+            Assert.AreEqual(0, watcher.events.Count);
         }
 
         /**
