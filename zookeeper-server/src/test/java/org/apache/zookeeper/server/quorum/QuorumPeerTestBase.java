@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZKTestCase;
+import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.common.PathUtils;
 import org.apache.zookeeper.server.admin.AdminServer.AdminServerException;
 import org.apache.zookeeper.server.admin.JettyAdminServer;
@@ -389,5 +390,15 @@ public class QuorumPeerTestBase extends ZKTestCase implements Watcher {
             return confFile;
         }
 
+    }
+
+    public static void waitForOne(ZooKeeper zk, ZooKeeper.States state) throws InterruptedException {
+        int iterations = ClientBase.CONNECTION_TIMEOUT / 500;
+        while (zk.getState() != state) {
+            if (iterations-- == 0) {
+                throw new RuntimeException("Waiting too long " + zk.getState() + " != " + state);
+            }
+            Thread.sleep(500);
+        }
     }
 }
