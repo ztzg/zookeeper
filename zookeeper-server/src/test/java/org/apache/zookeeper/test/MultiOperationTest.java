@@ -443,6 +443,22 @@ public class MultiOperationTest extends ClientBase {
         zk.getData("/multi2", false, null);
     }
 
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void testCreateReturnStat(boolean useAsync) throws Exception {
+        List<OpResult> results = multi(zk, Arrays.asList(
+                Op.create("/multi0", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT, Op.CreateFlags.DEFAULT),
+                Op.create("/multi1", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT, Op.CreateFlags.RETURN_STAT),
+                Op.create("/multi2", new byte[0], Ids.OPEN_ACL_UNSAFE, 0, Op.CreateFlags.DEFAULT),
+                Op.create("/multi3", new byte[0], Ids.OPEN_ACL_UNSAFE, 0, Op.CreateFlags.RETURN_STAT)),
+                useAsync);
+        assertNull(((OpResult.CreateResult) results.get(0)).getStat());
+        assertNotNull(((OpResult.CreateResult) results.get(1)).getStat());
+        assertNull(((OpResult.CreateResult) results.get(2)).getStat());
+        assertNotNull(((OpResult.CreateResult) results.get(3)).getStat());
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testEmpty(boolean useAsync) throws Exception {

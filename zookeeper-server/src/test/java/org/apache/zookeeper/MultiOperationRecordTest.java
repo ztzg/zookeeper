@@ -34,6 +34,8 @@ public class MultiOperationRecordTest extends ZKTestCase {
         MultiOperationRecord request = new MultiOperationRecord();
         request.add(Op.check("check", 1));
         request.add(Op.create("create", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, 0));
+        request.add(Op.create("createWithMode", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, CreateMode.EPHEMERAL_SEQUENTIAL));
+        request.add(Op.create("createWithStat", "create data".getBytes(), ZooDefs.Ids.CREATOR_ALL_ACL, CreateMode.PERSISTENT, Op.CreateFlags.RETURN_STAT));
         request.add(Op.delete("delete", 17));
         request.add(Op.setData("setData", "set data".getBytes(), 19));
 
