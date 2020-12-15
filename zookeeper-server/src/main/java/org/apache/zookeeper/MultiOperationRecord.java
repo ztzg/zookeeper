@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import org.apache.jute.InputArchive;
 import org.apache.jute.OutputArchive;
 import org.apache.jute.Record;
@@ -126,7 +127,10 @@ public class MultiOperationRecord implements Record, Iterable<Op> {
                 case ZooDefs.OpCode.createContainer:
                     CreateRequest cr = new CreateRequest();
                     cr.deserialize(archive, tag);
-                    add(Op.create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags()));
+                    Set<Op.CreateFlags> createFlags = h.getType() == ZooDefs.OpCode.create2
+                        ? Op.CreateFlags.RETURN_STAT
+                        : Op.CreateFlags.DEFAULT;
+                    add(Op.create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags(), createFlags));
                     break;
                 case ZooDefs.OpCode.createTTL:
                     CreateTTLRequest crTtl = new CreateTTLRequest();
