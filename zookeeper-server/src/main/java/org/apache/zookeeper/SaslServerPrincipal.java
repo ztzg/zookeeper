@@ -21,6 +21,7 @@ package org.apache.zookeeper;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import org.apache.zookeeper.client.ZKClientConfig;
+import org.apache.zookeeper.util.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -80,11 +81,7 @@ public class SaslServerPrincipal {
                 throw new IllegalArgumentException("Unable to canonicalize address " + addr + " because it's not resolvable");
             }
 
-            String canonicalHostName = inetAddr.getCanonicalHostName();
-            //avoid using literal IP address when security check fails
-            if (!canonicalHostName.equals(inetAddr.getHostAddress())) {
-                hostName = canonicalHostName;
-            }
+            hostName = SecurityUtils.canonicalizeHostName(hostName, inetAddr);
             LOG.debug("Canonicalized address to {}", hostName);
         }
         String serverPrincipal = principalUserName + "/" + hostName;

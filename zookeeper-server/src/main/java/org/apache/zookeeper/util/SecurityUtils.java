@@ -18,6 +18,7 @@
 
 package org.apache.zookeeper.util;
 
+import java.net.InetAddress;
 import java.security.Principal;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -272,6 +273,17 @@ public final class SecurityUtils {
         } else {
             return replacePattern(components, hostname);
         }
+    }
+
+    public static String canonicalizeHostName(String hostName, InetAddress addr) {
+        String canonicalHostName = addr.getCanonicalHostName();
+
+        //avoid using literal IP address when security check fails
+        if (canonicalHostName.equals(addr.getHostAddress())) {
+            return hostName;
+        }
+
+        return canonicalHostName;
     }
 
     private static String[] getComponents(String principalConfig) {
