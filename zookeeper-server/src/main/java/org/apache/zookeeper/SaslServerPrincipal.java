@@ -38,16 +38,19 @@ public class SaslServerPrincipal {
      * @return the name of the principal.
      */
     static String getServerPrincipal(InetSocketAddress addr, ZKClientConfig clientConfig) {
-        return getServerPrincipal(new WrapperInetSocketAddress(addr), clientConfig);
+        return getServerPrincipal(addr, addr.getAddress(), clientConfig);
     }
 
     /**
      * Get the name of the server principal for a SASL client.  This is visible for testing purposes.
-     * @param addr the address of the host.
+     * @param addr the socket address of the host.
+     * @param inetAddr the IP address of the host, possibly {@code
+     *   null}.  Normally the result of {@code addr.getAddress()},
+     *   except when testing.
      * @param clientConfig the configuration for the client.
      * @return the name of the principal.
      */
-    static String getServerPrincipal(WrapperInetSocketAddress addr, ZKClientConfig clientConfig) {
+    static String getServerPrincipal(InetSocketAddress addr, InetAddress inetAddr, ZKClientConfig clientConfig) {
         String configuredServerPrincipal = clientConfig.getProperty(ZKClientConfig.ZOOKEEPER_SERVER_PRINCIPAL);
         if (configuredServerPrincipal != null) {
             // If server principal is already configured then return it
@@ -73,14 +76,13 @@ public class SaslServerPrincipal {
         }
 
         if (canonicalize) {
-            WrapperInetAddress ia = addr.getAddress();
-            if (ia == null) {
+            if (inetAddr == null) {
                 throw new IllegalArgumentException("Unable to canonicalize address " + addr + " because it's not resolvable");
             }
 
-            String canonicalHostName = ia.getCanonicalHostName();
+            String canonicalHostName = inetAddr.getCanonicalHostName();
             //avoid using literal IP address when security check fails
-            if (!canonicalHostName.equals(ia.getHostAddress())) {
+            if (!canonicalHostName.equals(inetAddr.getHostAddress())) {
                 hostName = canonicalHostName;
             }
             LOG.debug("Canonicalized address to {}", hostName);
@@ -88,60 +90,4 @@ public class SaslServerPrincipal {
         String serverPrincipal = principalUserName + "/" + hostName;
         return serverPrincipal;
     }
-
-    /**
-     * This is here to provide a way to unit test the core logic as the methods for
-     * InetSocketAddress are marked as final.
-     */
-    static class WrapperInetSocketAddress {
-
-        private final InetSocketAddress addr;
-
-        WrapperInetSocketAddress(InetSocketAddress addr) {
-            this.addr = addr;
-        }
-
-        public String getHostName() {
-            return addr.getHostName();
-        }
-
-        public WrapperInetAddress getAddress() {
-            InetAddress ia = addr.getAddress();
-            return ia == null ? null : new WrapperInetAddress(ia);
-        }
-
-        @Override
-        public String toString() {
-            return addr.toString();
-        }
-
-    }
-
-    /**
-     * This is here to provide a way to unit test the core logic as the methods for
-     * InetAddress are marked as final.
-     */
-    static class WrapperInetAddress {
-
-        private final InetAddress ia;
-
-        WrapperInetAddress(InetAddress ia) {
-            this.ia = ia;
-        }
-
-        public String getCanonicalHostName() {
-            return ia.getCanonicalHostName();
-        }
-
-        public String getHostAddress() {
-            return ia.getHostAddress();
-        }
-
-        @Override
-        public String toString() {
-            return ia.toString();
-        }
-
-    }
-
 }
