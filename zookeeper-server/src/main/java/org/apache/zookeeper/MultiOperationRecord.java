@@ -130,7 +130,7 @@ public class MultiOperationRecord implements Record, Iterable<Op> {
                     Set<Op.CreateFlags> createFlags = h.getType() == ZooDefs.OpCode.create2
                         ? Op.CreateFlags.RETURN_STAT
                         : Op.CreateFlags.DEFAULT;
-                    add(Op.create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags(), createFlags));
+                    add(new Op.Create(cr.getPath(), cr.getData(), cr.getAcl(), cr.getFlags(), createFlags));
                     break;
                 case ZooDefs.OpCode.createTTL:
                     CreateTTLRequest crTtl = new CreateTTLRequest();

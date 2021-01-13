@@ -117,27 +117,6 @@ public abstract class Op {
     }
 
     /**
-     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name.
-     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
-     * @see CreateMode#fromFlag(int)
-     *
-     * @param path
-     *                the path for the node
-     * @param data
-     *                the initial data for the node
-     * @param acl
-     *                the acl for the node
-     * @param createFlags
-     *                the set of {@link CreateFlags} to apply
-     * @param flags
-     *                specifying whether the node to be created is ephemeral
-     *                and/or sequential but using the integer encoding.
-     */
-    public static Op create(String path, byte[] data, List<ACL> acl, int flags, Set<CreateFlags> createFlags) {
-        return new Create(path, data, acl, flags, createFlags);
-    }
-
-    /**
      * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name
      * but adding an optional ttl
      * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
@@ -156,35 +135,11 @@ public abstract class Op {
      *                optional ttl or 0 (flags must imply a TTL creation mode)
      */
     public static Op create(String path, byte[] data, List<ACL> acl, int flags, long ttl) {
-        return create(path, data, acl, flags, CreateFlags.DEFAULT, ttl);
-    }
-
-    /**
-     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name
-     * but adding an optional ttl
-     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
-     * @see CreateMode#fromFlag(int)
-     *
-     * @param path
-     *                the path for the node
-     * @param data
-     *                the initial data for the node
-     * @param acl
-     *                the acl for the node
-     * @param flags
-     *                specifying whether the node to be created is ephemeral
-     *                and/or sequential but using the integer encoding.
-     * @param createFlags
-     *                the set of {@link CreateFlags} to apply
-     * @param ttl
-     *                optional ttl or 0 (flags must imply a TTL creation mode)
-     */
-    public static Op create(String path, byte[] data, List<ACL> acl, int flags, Set<CreateFlags> createFlags, long ttl) {
         CreateMode createMode = CreateMode.fromFlag(flags, CreateMode.PERSISTENT);
         if (createMode.isTTL()) {
             return new CreateTTL(path, data, acl, createMode, ttl);
         }
-        return new Create(path, data, acl, flags, createFlags);
+        return new Create(path, data, acl, flags, CreateFlags.DEFAULT);
     }
 
     /**
@@ -202,27 +157,7 @@ public abstract class Op {
      *                and/or sequential
      */
     public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
-        return create(path, data, acl, createMode, CreateFlags.DEFAULT);
-    }
-
-    /**
-     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name.
-     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
-     *
-     * @param path
-     *                the path for the node
-     * @param data
-     *                the initial data for the node
-     * @param acl
-     *                the acl for the node
-     * @param createMode
-     *                specifying whether the node to be created is ephemeral
-     *                and/or sequential
-     * @param createFlags
-     *                the set of {@link CreateFlags} to apply
-     */
-    public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode, Set<CreateFlags> createFlags) {
-        return new Create(path, data, acl, createMode, createFlags);
+        return new Create(path, data, acl, createMode, CreateFlags.DEFAULT);
     }
 
     /**
@@ -243,33 +178,10 @@ public abstract class Op {
      *                optional ttl or 0 (createMode must imply a TTL)
      */
     public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode, long ttl) {
-        return create(path, data, acl, createMode, CreateFlags.DEFAULT, ttl);
-    }
-
-    /**
-     * Constructs a create operation.  Arguments are as for the ZooKeeper method of the same name
-     * but adding an optional ttl
-     * @see ZooKeeper#create(String, byte[], java.util.List, CreateMode)
-     *
-     * @param path
-     *                the path for the node
-     * @param data
-     *                the initial data for the node
-     * @param acl
-     *                the acl for the node
-     * @param createMode
-     *                specifying whether the node to be created is ephemeral
-     *                and/or sequential
-     * @param createFlags
-     *                the set of {@link CreateFlags} to apply
-     * @param ttl
-     *                optional ttl or 0 (createMode must imply a TTL)
-     */
-    public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode, Set<CreateFlags> createFlags, long ttl) {
         if (createMode.isTTL()) {
             return new CreateTTL(path, data, acl, createMode, ttl);
         }
-        return new Create(path, data, acl, createMode, createFlags);
+        return new Create(path, data, acl, createMode, CreateFlags.DEFAULT);
     }
 
     /**
@@ -455,11 +367,11 @@ public abstract class Op {
         protected List<ACL> acl;
         protected int flags;
 
-        private Create(String path, byte[] data, List<ACL> acl, int flags, Set<CreateFlags> createFlags) {
+        Create(String path, byte[] data, List<ACL> acl, int flags, Set<CreateFlags> createFlags) {
             this(getOpcode(CreateMode.fromFlag(flags, CreateMode.PERSISTENT), createFlags), path, data, acl, flags);
         }
 
-        private Create(String path, byte[] data, List<ACL> acl, CreateMode createMode, Set<CreateFlags> createFlags) {
+        Create(String path, byte[] data, List<ACL> acl, CreateMode createMode, Set<CreateFlags> createFlags) {
             this(getOpcode(createMode, createFlags), path, data, acl, createMode.toFlag());
         }
 
