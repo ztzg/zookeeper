@@ -111,6 +111,7 @@ public abstract class Op {
      * @param flags
      *                specifying whether the node to be created is ephemeral
      *                and/or sequential but using the integer encoding.
+     * @deprecated    Use {@link CreateBuilder} instead.
      */
     public static Op create(String path, byte[] data, List<ACL> acl, int flags) {
         return new Create(path, data, acl, flags, CreateFlags.DEFAULT);
@@ -133,6 +134,7 @@ public abstract class Op {
      *                and/or sequential but using the integer encoding.
      * @param ttl
      *                optional ttl or 0 (flags must imply a TTL creation mode)
+     * @deprecated    Use {@link CreateBuilder} instead.
      */
     public static Op create(String path, byte[] data, List<ACL> acl, int flags, long ttl) {
         CreateMode createMode = CreateMode.fromFlag(flags, CreateMode.PERSISTENT);
@@ -155,6 +157,7 @@ public abstract class Op {
      * @param createMode
      *                specifying whether the node to be created is ephemeral
      *                and/or sequential
+     * @deprecated    Use {@link CreateBuilder} instead.
      */
     public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode) {
         return new Create(path, data, acl, createMode, CreateFlags.DEFAULT);
@@ -176,6 +179,7 @@ public abstract class Op {
      *                and/or sequential
      * @param ttl
      *                optional ttl or 0 (createMode must imply a TTL)
+     * @deprecated    Use {@link CreateBuilder} instead.
      */
     public static Op create(String path, byte[] data, List<ACL> acl, CreateMode createMode, long ttl) {
         if (createMode.isTTL()) {
@@ -455,12 +459,12 @@ public abstract class Op {
 
         private final long ttl;
 
-        private CreateTTL(String path, byte[] data, List<ACL> acl, int flags, long ttl) {
+        CreateTTL(String path, byte[] data, List<ACL> acl, int flags, long ttl) {
             super(path, data, acl, flags, CreateFlags.DEFAULT);
             this.ttl = ttl;
         }
 
-        private CreateTTL(String path, byte[] data, List<ACL> acl, CreateMode createMode, long ttl) {
+        CreateTTL(String path, byte[] data, List<ACL> acl, CreateMode createMode, long ttl) {
             super(path, data, acl, createMode, CreateFlags.DEFAULT);
             this.ttl = ttl;
         }
