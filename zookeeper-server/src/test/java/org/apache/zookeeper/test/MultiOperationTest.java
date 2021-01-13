@@ -32,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -443,20 +444,38 @@ public class MultiOperationTest extends ClientBase {
         zk.getData("/multi2", false, null);
     }
 
+    private Op.Create createCreateWithFlags(String path, boolean useCreateMode, Set<Op.CreateFlags> createFlags) {
+        Op.CreateBuilder builder = new Op.CreateBuilder()
+            .setPath(path)
+            .setACL(Ids.OPEN_ACL_UNSAFE)
+            .setCreateFlags(createFlags);
+
+        if (useCreateMode) {
+            builder.setCreateMode(CreateMode.PERSISTENT);
+        } else {
+            builder.setCreateModeFlag(0);
+        }
+
+        return builder.build();
+    }
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testCreateReturnStat(boolean useAsync) throws Exception {
         List<OpResult> results = multi(zk, Arrays.asList(
-                Op.create("/multi0", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT, Op.CreateFlags.DEFAULT),
-                Op.create("/multi1", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT, Op.CreateFlags.RETURN_STAT),
-                Op.create("/multi2", new byte[0], Ids.OPEN_ACL_UNSAFE, 0, Op.CreateFlags.DEFAULT),
-                Op.create("/multi3", new byte[0], Ids.OPEN_ACL_UNSAFE, 0, Op.CreateFlags.RETURN_STAT)),
-                useAsync);
+            Op.create("/multi0", new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT),
+            createCreateWithFlags("/multi1", true, Op.CreateFlags.DEFAULT),
+            createCreateWithFlags("/multi2", true, Op.CreateFlags.RETURN_STAT),
+            Op.create("/multi3", new byte[0], Ids.OPEN_ACL_UNSAFE, 0),
+            createCreateWithFlags("/multi4", false, Op.CreateFlags.DEFAULT),
+            createCreateWithFlags("/multi5", false, Op.CreateFlags.RETURN_STAT)),
+            useAsync);
         assertNull(((OpResult.CreateResult) results.get(0)).getStat());
-        assertNotNull(((OpResult.CreateResult) results.get(1)).getStat());
-        assertNull(((OpResult.CreateResult) results.get(2)).getStat());
-        assertNotNull(((OpResult.CreateResult) results.get(3)).getStat());
+        assertNull(((OpResult.CreateResult) results.get(1)).getStat());
+        assertNotNull(((OpResult.CreateResult) results.get(2)).getStat());
+        assertNull(((OpResult.CreateResult) results.get(3)).getStat());
+        assertNull(((OpResult.CreateResult) results.get(4)).getStat());
+        assertNotNull(((OpResult.CreateResult) results.get(5)).getStat());
     }
 
     @ParameterizedTest
