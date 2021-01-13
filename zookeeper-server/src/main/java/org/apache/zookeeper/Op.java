@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.apache.jute.Record;
 import org.apache.zookeeper.common.PathUtils;
@@ -370,6 +371,79 @@ public abstract class Op {
      */
     void validate() throws KeeperException {
         PathUtils.validatePath(path);
+    }
+
+    public static class CreateBuilder {
+        private String path;
+        private byte[] data;
+        private List<ACL> acl;
+        private Integer createModeFlag;
+        private CreateMode createMode;
+        private Set<CreateFlags> createFlags;
+        private Long ttl;
+
+        public CreateBuilder() {
+        }
+
+        public CreateBuilder setPath(String path) {
+            this.path = path;
+            return this;
+        }
+
+        public CreateBuilder setData(byte[] data) {
+            this.data = data;
+            return this;
+        }
+
+        public CreateBuilder setACL(List<ACL> acl) {
+            this.acl = acl;
+            return this;
+        }
+
+        public CreateBuilder setCreateModeFlag(Integer createModeFlag) {
+            this.createModeFlag = createModeFlag;
+            return this;
+        }
+
+        public CreateBuilder setCreateMode(CreateMode createMode) {
+            this.createMode = createMode;
+            return this;
+        }
+
+        public CreateBuilder setCreateFlags(Set<CreateFlags> createFlags) {
+            this.createFlags = createFlags;
+            return this;
+        }
+
+        public CreateBuilder setTTL(Long ttl) {
+            this.ttl = ttl;
+            return this;
+        }
+
+        public Create build() {
+            final CreateMode resolvedMode;
+
+            if (createModeFlag != null) {
+                if (createMode != null) {
+                    throw new IllegalStateException(
+                        "createModeFlag and createMode are exclusive");
+                }
+                resolvedMode = CreateMode.fromFlag(
+                    createModeFlag, CreateMode.PERSISTENT);
+            } else {
+                Objects.requireNonNull(createMode,
+                    "one of createModeFlag or createMode must be configured");
+                resolvedMode = createMode;
+            }
+
+            if (resolvedMode.isTTL()) {
+                Objects.requireNonNull(ttl,
+                    "ttl must not be null for mode " + resolvedMode);
+                return new CreateTTL(path, data, acl, resolvedMode, ttl);
+            } else {
+                return new Create(path, data, acl, resolvedMode, createFlags);
+            }
+        }
     }
 
     //////////////////
