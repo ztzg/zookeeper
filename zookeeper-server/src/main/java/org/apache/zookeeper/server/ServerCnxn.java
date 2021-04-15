@@ -387,7 +387,6 @@ public abstract class ServerCnxn implements Stats, Watcher {
 
     protected long count;
     protected long totalLatency;
-    protected long requestsProcessedCount;
     protected DisconnectReason disconnectReason = DisconnectReason.UNKNOWN;
 
     public synchronized void resetStats() {
