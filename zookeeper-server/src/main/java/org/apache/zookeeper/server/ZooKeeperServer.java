@@ -2334,7 +2334,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     public AuthenticationLimiter getAuthenticationLimiter() {
-        return null;
+        return authHelper.getAuthenticationLimiter();
     }
 }
 
