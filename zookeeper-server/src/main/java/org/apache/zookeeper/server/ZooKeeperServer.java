@@ -302,7 +302,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
 
     private final AtomicInteger currentLargeRequestBytes = new AtomicInteger(0);
 
-    private AuthenticationHelper authHelper;
+    private final AuthenticationHelper authHelper;
 
     void removeCnxn(ServerCnxn cnxn) {
         zkDb.removeCnxn(cnxn);
