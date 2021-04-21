@@ -32,7 +32,9 @@ import javax.security.auth.login.LoginException;
 import org.apache.zookeeper.Environment;
 import org.apache.zookeeper.Login;
 import org.apache.zookeeper.common.ZKConfig;
+import org.apache.zookeeper.data.Id;
 import org.apache.zookeeper.jmx.MBeanRegistry;
+import org.apache.zookeeper.server.auth.AuthenticationLimiter;
 import org.apache.zookeeper.server.auth.SaslServerCallbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -327,5 +329,39 @@ public abstract class ServerCnxnFactory {
             return true;
         }
         return false;
+    }
+
+    void addAuthInfo(ServerCnxn cnxn, Id id) {
+        updateAuthInfo(cnxn, id, true);
+    }
+
+    void removeAuthInfo(ServerCnxn cnxn, Id id) {
+        updateAuthInfo(cnxn, id, false);
+    }
+
+    private void updateAuthInfo(ServerCnxn cnxn, Id id, boolean added) {
+        ZooKeeperServer zks = zkServer;
+        if (zks == null) {
+            // Shutting down
+            return;
+        }
+
+        AuthenticationLimiter limiter = zks.getAuthenticationLimiter();
+        if (limiter == null) {
+            return;
+        }
+
+        try {
+            if (added) {
+                limiter.addAuthInfo(cnxn, id);
+            } else {
+                limiter.removeAuthInfo(cnxn, id);
+            }
+        } catch (RuntimeException e) {
+            LOG.error("Caught runtime exception from {}",
+                limiter.getClass().getName(), e);
+            cnxn.close(ServerCnxn.DisconnectReason.UNKNOWN);
+            return;
+        }
     }
 }
