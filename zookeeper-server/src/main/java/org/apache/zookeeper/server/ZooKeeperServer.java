@@ -282,6 +282,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
 
     private final AtomicInteger currentLargeRequestBytes = new AtomicInteger(0);
 
+    private final AuthenticationHelper authHelper;
+
     void removeCnxn(ServerCnxn cnxn) {
         zkDb.removeCnxn(cnxn);
     }
@@ -296,6 +298,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         listener = new ZooKeeperServerListenerImpl(this);
         serverStats = new ServerStats(this);
         this.requestPathMetricsCollector = new RequestPathMetricsCollector();
+        this.authHelper = new AuthenticationHelper();
     }
 
     /**
@@ -336,6 +339,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         this.requestPathMetricsCollector = new RequestPathMetricsCollector();
 
         this.initLargeRequestThrottlingSettings();
+
+        this.authHelper = new AuthenticationHelper();
 
         LOG.info(
             "Created server with"
@@ -2119,6 +2124,6 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     public AuthenticationLimiter getAuthenticationLimiter() {
-        return null;
+        return authHelper.getAuthenticationLimiter();
     }
 }
