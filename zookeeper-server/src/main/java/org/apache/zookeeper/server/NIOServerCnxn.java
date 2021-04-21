@@ -722,6 +722,24 @@ public class NIOServerCnxn extends ServerCnxn {
     }
 
     @Override
+    protected boolean addAuthInfoIfAbsent(Id id) {
+        boolean added = super.addAuthInfoIfAbsent(id);
+        if (added) {
+            factory.addAuthInfo(this, id);
+        }
+        return added;
+    }
+
+    @Override
+    public boolean removeAuthInfo(Id id) {
+        boolean removed = super.removeAuthInfo(id);
+        if (removed) {
+            factory.removeAuthInfo(this, id);
+        }
+        return removed;
+    }
+
+    @Override
     public int getInterestOps() {
         if (!isSelectable()) {
             return 0;

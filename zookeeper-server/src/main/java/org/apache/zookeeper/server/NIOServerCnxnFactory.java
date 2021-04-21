@@ -38,6 +38,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.apache.zookeeper.data.Id;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -782,6 +783,10 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory {
         cnxnExpiryQueue.remove(cnxn);
 
         removeCnxnFromSessionMap(cnxn);
+
+        for (Id id : cnxn.getAuthInfo()) {
+            cnxn.removeAuthInfo(id);
+        }
 
         InetAddress addr = cnxn.getSocketAddress();
         if (addr != null) {

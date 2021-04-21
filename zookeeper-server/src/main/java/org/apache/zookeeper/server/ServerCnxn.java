@@ -277,7 +277,15 @@ public abstract class ServerCnxn implements Stats, Watcher {
     }
 
     public void addAuthInfo(Id id) {
-        authInfo.add(id);
+        // We cannot change the return value of addAuthInfo as that
+        // would break existing compiled implementations of
+        // AuthenticationProvider--hence the more verbose variant of
+        // the method to which we delegate.
+        addAuthInfoIfAbsent(id);
+    }
+
+    protected boolean addAuthInfoIfAbsent(Id id) {
+        return authInfo.add(id);
     }
 
     public boolean removeAuthInfo(Id id) {

@@ -127,6 +127,10 @@ public class NettyServerCnxn extends ServerCnxn {
 
         factory.removeCnxnFromIpMap(this, ((InetSocketAddress) channel.remoteAddress()).getAddress());
 
+        for (Id id : this.getAuthInfo()) {
+            this.removeAuthInfo(id);
+        }
+
         if (zkServer != null) {
             zkServer.removeCnxn(this);
         }
@@ -566,6 +570,24 @@ public class NettyServerCnxn extends ServerCnxn {
     @Override
     public void setSessionTimeout(int sessionTimeout) {
         this.sessionTimeout = sessionTimeout;
+    }
+
+    @Override
+    protected boolean addAuthInfoIfAbsent(Id id) {
+        boolean added = super.addAuthInfoIfAbsent(id);
+        if (added) {
+            factory.addAuthInfo(this, id);
+        }
+        return added;
+    }
+
+    @Override
+    public boolean removeAuthInfo(Id id) {
+        boolean removed = super.removeAuthInfo(id);
+        if (removed) {
+            factory.removeAuthInfo(this, id);
+        }
+        return removed;
     }
 
     @Override
