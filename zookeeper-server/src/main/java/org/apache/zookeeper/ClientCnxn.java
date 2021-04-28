@@ -926,8 +926,18 @@ public class ClientCnxn {
             // send a response packet immediately, rather than queuing a
             // response as with other packets.
             if (tunnelAuthInProgress()) {
+                if (replyHdr.getErr() == KeeperException.Code.AUTHFAILED.intValue()) {
+                    state = States.AUTH_FAILED;
+                    eventThread.queueEvent(new WatchedEvent(Watcher.Event.EventType.None,
+                        Watcher.Event.KeeperState.AuthFailed, null));
+                    eventThread.queueEventOfDeath();
+                    return;
+                }
+
                 GetSASLRequest request = new GetSASLRequest();
-                request.deserialize(bbia, "token");
+                if (replyHdr.getErr() == 0) {
+                    request.deserialize(bbia, "token");
+                }
                 zooKeeperSaslClient.respondToServer(request.getToken(), ClientCnxn.this);
                 return;
             }
