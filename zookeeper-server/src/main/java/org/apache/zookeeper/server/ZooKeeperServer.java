@@ -1590,6 +1590,14 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                 }
             }
             if (authReturn == KeeperException.Code.OK) {
+                // OK so far; let's check limits.
+                authReturn = authHelper.checkAuthenticationLimits(cnxn);
+                if (authReturn != KeeperException.Code.OK) {
+                    LOG.warn("Closing client connection with '{}' due to authentication limits.",
+                        authReturn == null ? "(null)" : KeeperException.create(authReturn).getMessage());
+                }
+            }
+            if (authReturn == KeeperException.Code.OK) {
                 LOG.debug("Authentication succeeded for scheme: {}", scheme);
                 LOG.info("auth success {}", cnxn.getRemoteSocketAddress());
                 ReplyHeader rh = new ReplyHeader(h.getXid(), 0, KeeperException.Code.OK.intValue());
@@ -1603,8 +1611,13 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                 } else {
                     LOG.warn("Authentication failed for scheme: {}", scheme);
                 }
+                if (authReturn == null) {
+                    // OpCode.auth "traditionally" returns AUTHFAILED
+                    // when anything goes wrong.
+                    authReturn = KeeperException.Code.AUTHFAILED;
+                }
                 // send a response...
-                ReplyHeader rh = new ReplyHeader(h.getXid(), 0, KeeperException.Code.AUTHFAILED.intValue());
+                ReplyHeader rh = new ReplyHeader(h.getXid(), 0, authReturn.intValue());
                 cnxn.sendResponse(rh, null, null);
                 // ... and close connection
                 cnxn.sendBuffer(ServerCnxnFactory.closeConn);
