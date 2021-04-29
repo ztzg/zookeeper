@@ -1798,6 +1798,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     private void processSasl(RequestRecord request, ServerCnxn cnxn, RequestHeader requestHeader) throws IOException {
+        Code authReturn = null;
         LOG.debug("Responding to client SASL token.");
         GetSASLRequest clientTokenRecord = request.readRecord(GetSASLRequest::new);
         byte[] clientToken = clientTokenRecord.getToken();
@@ -1823,34 +1824,46 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                             Long.toHexString(cnxn.getSessionId()),
                             authorizationID);
                     }
+
+                    authReturn = authHelper.checkAuthenticationLimits(cnxn);
+                    if (authReturn != Code.OK) {
+                        LOG.warn("Closing client connection with '{}' due to authentication limits.",
+                            authReturn == null ? "(null)" : KeeperException.create(authReturn).getMessage());
+                    }
+                } else {
+                    // Okay, continue SASL negotiation.
+                    authReturn = Code.OK;
                 }
             } catch (SaslException e) {
                 LOG.warn("Client {} failed to SASL authenticate: {}", cnxn.getRemoteSocketAddress(), e);
                 if (shouldAllowSaslFailedClientsConnect() && !authHelper.isSaslAuthRequired()) {
                     LOG.warn("Maintaining client connection despite SASL authentication failure.");
                 } else {
-                    int error;
                     if (authHelper.isSaslAuthRequired()) {
                         LOG.warn(
                             "Closing client connection due to server requires client SASL authentication,"
                                 + "but client SASL authentication has failed, or client is not configured with SASL "
                                 + "authentication.");
-                        error = Code.SESSIONCLOSEDREQUIRESASLAUTH.intValue();
+                        authReturn = Code.SESSIONCLOSEDREQUIRESASLAUTH;
                     } else {
                         LOG.warn("Closing client connection due to SASL authentication failure.");
-                        error = Code.AUTHFAILED.intValue();
+                        authReturn = Code.AUTHFAILED;
                     }
-
-                    ReplyHeader replyHeader = new ReplyHeader(requestHeader.getXid(), 0, error);
-                    cnxn.sendResponse(replyHeader, new SetSASLResponse(null), "response");
-                    cnxn.sendCloseSession();
-                    cnxn.disableRecv();
-                    return;
                 }
             }
         } catch (NullPointerException e) {
             LOG.error("cnxn.saslServer is null: cnxn object did not initialize its saslServer properly.");
         }
+
+        if (authReturn != Code.OK) {
+            int err = authReturn != null ? authReturn.intValue() : Code.AUTHFAILED.intValue();
+            ReplyHeader replyHeader = new ReplyHeader(requestHeader.getXid(), 0, err);
+            cnxn.sendResponse(replyHeader, new SetSASLResponse(null), "response");
+            cnxn.sendCloseSession();
+            cnxn.disableRecv();
+            return;
+        }
+
         if (responseToken != null) {
             LOG.debug("Size of server SASL response: {}", responseToken.length);
         }
