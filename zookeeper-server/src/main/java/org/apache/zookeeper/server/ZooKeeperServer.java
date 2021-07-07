@@ -1584,6 +1584,11 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
                     authReturn = ap.handleAuthentication(
                         new ServerAuthenticationProvider.ServerObjs(this, cnxn),
                         authPacket.getAuth());
+                    if (authReturn != KeeperException.Code.OK && authReturn != KeeperException.Code.AUTHFAILED) {
+                        LOG.warn("AuthenticationProvider returned '{}', overriding with AUTHFAILED for backward compatibility",
+                            authReturn == null ? "(null)" : KeeperException.create(authReturn).getMessage());
+                        authReturn = KeeperException.Code.AUTHFAILED;
+                    }
                 } catch (RuntimeException e) {
                     LOG.warn("Caught runtime exception from AuthenticationProvider: {}", scheme, e);
                     authReturn = KeeperException.Code.AUTHFAILED;
