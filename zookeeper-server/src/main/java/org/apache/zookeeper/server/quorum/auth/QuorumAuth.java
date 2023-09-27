@@ -36,6 +36,9 @@ public class QuorumAuth {
     public static final String QUORUM_KERBEROS_SERVICE_PRINCIPAL = "quorum.auth.kerberos.servicePrincipal";
     public static final String QUORUM_KERBEROS_SERVICE_PRINCIPAL_DEFAULT_VALUE = "zkquorum/localhost";
 
+    public static final String QUORUM_KERBEROS_LEARNER_PRINCIPAL = "quorum.auth.kerberos.learnerPrincipal";
+    public static final String QUORUM_KERBEROS_LEARNER_PRINCIPAL_DEFAULT_VALUE = "";
+
     public static final String QUORUM_LEARNER_SASL_LOGIN_CONTEXT = "quorum.auth.learner.saslLoginContext";
     public static final String QUORUM_LEARNER_SASL_LOGIN_CONTEXT_DFAULT_VALUE = "QuorumLearner";
 

@@ -1887,6 +1887,14 @@ and [SASL authentication for ZooKeeper](https://cwiki.apache.org/confluence/disp
     
     Default: **true** (3.9.0+), **false** (3.8.x)
 
+* *quorum.auth.kerberos.learnerPrincipal* :
+    (No Java system property)
+    **New in 3.9.1:**
+    If non empty, only accept quorum joins from principals matching the "pattern," which must have
+    the form `myprimary/_HOST`, with `myprimary` being a literal match and `_HOST` a "wildcard" for
+    the fully-qualified name of any ensemble member.
+    Default: empty.
+
 <a name="Experimental+Options%2FFeatures"></a>
 
 #### Experimental Options/Features

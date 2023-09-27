@@ -31,6 +31,7 @@ import javax.security.auth.login.AppConfigurationEntry;
 import javax.security.sasl.AuthorizeCallback;
 import javax.security.sasl.RealmCallback;
 import org.apache.zookeeper.server.auth.DigestLoginModule;
+import org.apache.zookeeper.util.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,15 +44,18 @@ import org.slf4j.LoggerFactory;
 public class SaslQuorumServerCallbackHandler implements CallbackHandler {
 
     private static final String USER_PREFIX = "user_";
+    private static final String PRINCIPAL_PATTERN_SUFFIX = "/" + SecurityUtils.QUORUM_HOSTNAME_PATTERN;
     private static final Logger LOG = LoggerFactory.getLogger(SaslQuorumServerCallbackHandler.class);
 
     private String userName;
     private final boolean isDigestAuthn;
     private final Map<String, String> credentials;
+    private final String authzPrimary;
     private final Set<String> authzHosts;
 
     public SaslQuorumServerCallbackHandler(
         AppConfigurationEntry[] configurationEntries,
+        String quorumLearnerPrincipal,
         Set<String> authzHosts) {
 
         Map<String, String> credentials = new HashMap<>();
@@ -76,10 +80,24 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
 
         this.isDigestAuthn = isDigestAuthn;
         if (isDigestAuthn) {
-            this.credentials = Collections.unmodifiableMap(credentials);
             LOG.warn("Using DIGEST-MD5 for quorum authorization");
+            this.credentials = Collections.unmodifiableMap(credentials);
+            this.authzPrimary = null;
         } else {
             this.credentials = Collections.emptyMap();
+
+            if (quorumLearnerPrincipal == null || quorumLearnerPrincipal.isEmpty()) {
+                this.authzPrimary = null;
+                LOG.warn("Not checking the primary of quorum joiners");
+            } else if (quorumLearnerPrincipal.endsWith(PRINCIPAL_PATTERN_SUFFIX)) {
+                int n = quorumLearnerPrincipal.length() - PRINCIPAL_PATTERN_SUFFIX.length();
+                this.authzPrimary = quorumLearnerPrincipal.substring(0, n);
+                LOG.info("Expecting primary {} for quorum joiners", this.authzPrimary);
+            } else {
+                String errorMessage = "Principal '" + quorumLearnerPrincipal + "' does not have the expected primary/_HOST format";
+                LOG.error(errorMessage);
+                throw new RuntimeException(errorMessage);
+            }
         }
 
         // authorized host lists
@@ -131,13 +149,13 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
         // 1. Matches authenticationID and authorizationID
         authzFlag = authenticationID.equals(authorizationID);
 
-        // 2. Verify whether the connecting host is present in authorized hosts.
-        // If not exists, then connecting peer is not authorized to join the
-        // ensemble and will reject it.
-        if (!isDigestAuthn && authzFlag) {
+        if (!isDigestAuthn) {
             String[] components = authorizationID.split("[/@]");
             if (components.length == 3) {
-                authzFlag = authzHosts.contains(components[1]);
+                // 2. Verify whether the principal's primary matches the expected value, if any.
+                authzFlag = authzFlag && (authzPrimary == null || authzPrimary.equals(components[0]));
+                // 3. Verify whether the instance/host component matches one of the ensemble hostnames.
+                authzFlag = authzFlag && authzHosts.contains(components[1]);
             } else {
                 authzFlag = false;
             }
