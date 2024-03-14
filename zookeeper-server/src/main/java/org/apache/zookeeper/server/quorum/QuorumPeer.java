@@ -79,6 +79,7 @@ import org.apache.zookeeper.server.quorum.auth.QuorumAuthLearner;
 import org.apache.zookeeper.server.quorum.auth.QuorumAuthServer;
 import org.apache.zookeeper.server.quorum.auth.SaslQuorumAuthLearner;
 import org.apache.zookeeper.server.quorum.auth.SaslQuorumAuthServer;
+import org.apache.zookeeper.server.quorum.auth.SslQuorumAuthServer;
 import org.apache.zookeeper.server.quorum.flexible.QuorumMaj;
 import org.apache.zookeeper.server.quorum.flexible.QuorumOracleMaj;
 import org.apache.zookeeper.server.quorum.flexible.QuorumVerifier;
@@ -785,6 +786,12 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
      */
     protected String quorumServerLoginContext;
 
+    /**
+     * Enable/Disables quorum authorization using SSL/TLS common
+     * names. Defaulting to false.
+     */
+    protected boolean quorumSslAuthorizationEnabled;
+
     // TODO: need to tune the default value of thread size
     private static final int QUORUM_CNXN_THREADS_SIZE_DEFAULT_VALUE = 20;
     /**
@@ -1117,7 +1124,15 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             }
             authServer = new SaslQuorumAuthServer(isQuorumServerSaslAuthRequired(), quorumServerLoginContext, authzHosts);
             authLearner = new SaslQuorumAuthLearner(isQuorumLearnerSaslAuthRequired(), quorumServicePrincipal, quorumLearnerLoginContext);
+        } else if (isQuorumSslAuthorizationEnabled()) {
+            Set<String> authzHosts = new HashSet<>();
+            for (QuorumServer qs : getView().values()) {
+                authzHosts.add(qs.hostname);
+            }
+            authServer = new SslQuorumAuthServer(authzHosts);
+            authLearner = new NullQuorumAuthLearner();
         } else {
+            LOG.info("QuorumPeer communication is not secured! (SASL authentication and SASL/TLS authorization disabled)");
             authServer = new NullQuorumAuthServer();
             authLearner = new NullQuorumAuthLearner();
         }
@@ -2569,11 +2584,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
     void setQuorumSaslEnabled(boolean enableAuth) {
         quorumSaslEnableAuth = enableAuth;
-        if (!quorumSaslEnableAuth) {
-            LOG.info("QuorumPeer communication is not secured! (SASL auth disabled)");
-        } else {
-            LOG.info("{} set to {}", QuorumAuth.QUORUM_SASL_AUTH_ENABLED, enableAuth);
-        }
+        LOG.info("{} set to {}", QuorumAuth.QUORUM_SASL_AUTH_ENABLED, enableAuth);
     }
 
     void setQuorumServicePrincipal(String servicePrincipal) {
@@ -2608,6 +2619,15 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
     private boolean isQuorumLearnerSaslAuthRequired() {
         return quorumLearnerSaslAuthRequired;
+    }
+
+    void setQuorumSslAuthorizationEnabled(boolean enabled) {
+        quorumSslAuthorizationEnabled = enabled;
+        LOG.info("{} set to {}", QuorumAuth.QUORUM_SSL_AUTHORIZATION_ENABLED, enabled);
+    }
+
+    boolean isQuorumSslAuthorizationEnabled() {
+        return quorumSslAuthorizationEnabled;
     }
 
     public QuorumCnxManager createCnxnManager() {
