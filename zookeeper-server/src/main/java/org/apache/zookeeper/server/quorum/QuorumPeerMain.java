@@ -219,6 +219,9 @@ public class QuorumPeerMain {
                 quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
                 quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
             }
+
+            quorumPeer.setQuorumSslAuthorizationEnabled(config.quorumSslAuthorizationEnabled);
+
             quorumPeer.setQuorumCnxnThreadsSize(config.quorumCnxnThreadsSize);
             quorumPeer.initialize();
 
