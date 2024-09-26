@@ -21,7 +21,6 @@ package org.apache.zookeeper.server;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -55,8 +54,8 @@ import org.apache.zookeeper.proto.SetACLRequest;
 import org.apache.zookeeper.proto.SetDataRequest;
 import org.apache.zookeeper.server.ZooKeeperServer.ChangeRecord;
 import org.apache.zookeeper.server.ZooKeeperServer.PrecalculatedDigest;
-import org.apache.zookeeper.server.auth.ProviderRegistry;
-import org.apache.zookeeper.server.auth.ServerAuthenticationProvider;
+import org.apache.zookeeper.server.acl.ACLs;
+import org.apache.zookeeper.server.acl.FixupContext;
 import org.apache.zookeeper.server.quorum.LeaderZooKeeperServer;
 import org.apache.zookeeper.server.quorum.QuorumPeer.QuorumServer;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
@@ -940,22 +939,6 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
         }
     }
 
-    private static List<ACL> removeDuplicates(final List<ACL> acls) {
-        if (acls == null || acls.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // This would be done better with a Set but ACL hashcode/equals do not
-        // allow for null values
-        final ArrayList<ACL> retval = new ArrayList<>(acls.size());
-        for (final ACL acl : acls) {
-            if (!retval.contains(acl)) {
-                retval.add(acl);
-            }
-        }
-        return retval;
-    }
-
     private void validateCreateRequest(String path, CreateMode createMode, Request request, long ttl) throws KeeperException {
         if (createMode.isTTL() && !EphemeralType.extendedEphemeralTypesEnabled()) {
             throw new KeeperException.UnimplementedException();
@@ -977,60 +960,18 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
         }
     }
 
-    /**
-     * This method checks out the acl making sure it isn't null or empty,
-     * it has valid schemes and ids, and expanding any relative ids that
-     * depend on the requester's authentication information.
-     *
-     * @param authInfo list of ACL IDs associated with the client connection
-     * @param acls list of ACLs being assigned to the node (create or setACL operation)
-     * @return verified and expanded ACLs
-     * @throws KeeperException.InvalidACLException
-     */
-    public static List<ACL> fixupACL(String path, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
-        // check for well formed ACLs
-        // This resolves https://issues.apache.org/jira/browse/ZOOKEEPER-1877
-        List<ACL> uniqacls = removeDuplicates(acls);
-        if (uniqacls == null || uniqacls.size() == 0) {
-            throw new KeeperException.InvalidACLException(path);
-        }
-        List<ACL> rv = new ArrayList<>();
-        for (ACL a : uniqacls) {
-            LOG.debug("Processing ACL: {}", a);
-            if (a == null) {
-                throw new KeeperException.InvalidACLException(path);
-            }
-            Id id = a.getId();
-            if (id == null || id.getScheme() == null) {
-                throw new KeeperException.InvalidACLException(path);
-            }
-            if (id.getScheme().equals("world") && id.getId().equals("anyone")) {
-                rv.add(a);
-            } else if (id.getScheme().equals("auth")) {
-                // This is the "auth" id, so we have to expand it to the
-                // authenticated ids of the requester
-                boolean authIdValid = false;
-                for (Id cid : authInfo) {
-                    ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(cid.getScheme());
-                    if (ap == null) {
-                        LOG.error("Missing AuthenticationProvider for {}", cid.getScheme());
-                    } else if (ap.isAuthenticated()) {
-                        authIdValid = true;
-                        rv.add(new ACL(a.getPerms(), cid));
-                    }
+    private List<ACL> fixupACL(String path, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
+        FixupContext context = new FixupContext() {
+                public String getPath() {
+                    return path;
                 }
-                if (!authIdValid) {
-                    throw new KeeperException.InvalidACLException(path);
+
+                public List<Id> getAuthInfo() {
+                    return authInfo;
                 }
-            } else {
-                ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(id.getScheme());
-                if (ap == null || !ap.isValid(id.getId())) {
-                    throw new KeeperException.InvalidACLException(path);
-                }
-                rv.add(a);
-            }
-        }
-        return rv;
+            };
+
+        return ACLs.fixupACL(context, acls);
     }
 
     public void processRequest(Request request) {
