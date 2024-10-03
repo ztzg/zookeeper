@@ -21,6 +21,7 @@ package org.apache.zookeeper.server;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -969,9 +970,44 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
                 public List<Id> getAuthInfo() {
                     return authInfo;
                 }
+
+                public byte[] loadConstraints()
+                    throws KeeperException.InvalidACLException {
+                    return loadConstraintsNode(path);
+                }
             };
 
         return ACLs.fixupACL(context, acls);
+    }
+
+    private byte[] loadConstraintsNode(String path)
+        throws KeeperException.InvalidACLException {
+        ZKDatabase zkDb = zks.getZKDatabase();
+
+        String prefix = zkDb.getDataTree().getMaxPrefixWithAclConstraints(path);
+        if (StringUtils.isEmpty(prefix)) {
+            return null;
+        }
+
+        String cpath = ACLs.constraintsPath(prefix);
+        DataNode cnode = zkDb.getNode(cpath);
+        if (cnode == null) {
+            // should not happen
+            LOG.error("Lost ACL constraint node {}", cpath);
+            throw new KeeperException.InvalidACLException(path);
+        }
+
+        byte[] data = null;
+        synchronized (cnode) {
+            data = cnode.data;
+        }
+        if (data == null) {
+            // should not happen
+            LOG.error("Null ACL constraint node {}", cpath);
+            throw new KeeperException.InvalidACLException(path);
+        }
+
+        return Arrays.copyOf(data, data.length);
     }
 
     public void processRequest(Request request) {
