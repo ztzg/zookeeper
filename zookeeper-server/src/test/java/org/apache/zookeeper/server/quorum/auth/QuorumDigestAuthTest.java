@@ -27,6 +27,7 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.PortAssignment;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.admin.AdminServer;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 import org.apache.zookeeper.server.quorum.QuorumPeerMain;
@@ -180,7 +181,7 @@ public class QuorumDigestAuthTest extends QuorumAuthTestBase {
         try {
             new QuorumPeerMain() {
                 @Override
-                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException {
+                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException, ACLs.InitializationException {
                     super.initializeAndRun(args);
                 }
             }.initializeAndRun(args);
@@ -211,7 +212,7 @@ public class QuorumDigestAuthTest extends QuorumAuthTestBase {
         try {
             new QuorumPeerMain() {
                 @Override
-                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException {
+                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException, ACLs.InitializationException {
                     super.initializeAndRun(args);
                 }
             }.initializeAndRun(args);
@@ -226,7 +227,7 @@ public class QuorumDigestAuthTest extends QuorumAuthTestBase {
         try {
             new QuorumPeerMain() {
                 @Override
-                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException {
+                protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServer.AdminServerException, ACLs.InitializationException {
                     super.initializeAndRun(args);
                 }
             }.initializeAndRun(args);
