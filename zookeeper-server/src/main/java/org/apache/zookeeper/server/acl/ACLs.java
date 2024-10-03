@@ -43,6 +43,25 @@ public class ACLs {
 
     public static final String FIXUP_PROPERTY_PREFIX = "zookeeper.aclFixup.";
 
+    /** the zookeeper acl node that acts as the acl
+     * management node for zookeeper */
+    public static final String ZOOKEEPER_ACL_PATH = "/zookeeper/acl";
+
+    /**
+     * The ACL constraints node.
+     */
+    public static final String ZOOKEEPER_ACL_CONSTRAINTS_NAME = "zookeeper_constraints";
+
+    /**
+     * return the real path associated with this
+     * aclPath.
+     * @param aclPath the aclPath which's started with /zookeeper/acl
+     * @return the real path associated with this aclPath.
+     */
+    public static String trimConstraintsPath(String aclPath) {
+        return aclPath.substring(ZOOKEEPER_ACL_PATH.length());
+    }
+
     private static final List<Fixup> fixups = new ArrayList<>();
 
     public static class InitializationException extends Exception {
