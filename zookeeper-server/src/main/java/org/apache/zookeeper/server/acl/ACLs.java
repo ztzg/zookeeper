@@ -21,10 +21,14 @@ package org.apache.zookeeper.server.acl;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Id;
+import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
 import org.apache.zookeeper.server.auth.ServerAuthenticationProvider;
 import org.slf4j.Logger;
@@ -36,6 +40,55 @@ import org.slf4j.LoggerFactory;
  */
 public class ACLs {
     private static final Logger LOG = LoggerFactory.getLogger(ACLs.class);
+
+    public static final String FIXUP_PROPERTY_PREFIX = "zookeeper.aclFixup.";
+
+    private static final List<Fixup> fixups = new ArrayList<>();
+
+    public static class InitializationException extends Exception {
+        public InitializationException(String msg, Exception e) {
+            super(msg, e);
+        }
+    }
+
+    public static void initialize() throws InitializationException {
+        Map<String, String> defs = new TreeMap<>();
+
+        Enumeration<Object> e = System.getProperties().keys();
+        while (e.hasMoreElements()) {
+            String key = (String) e.nextElement();
+            if (key.startsWith(FIXUP_PROPERTY_PREFIX)) {
+                defs.put(key, System.getProperty(key));
+            }
+        }
+
+        List<Fixup> tmp = new ArrayList<>(Math.max(defs.size(), 1));
+        // Loaded in "natural" key order.
+        for (Map.Entry<String, String> def : defs.entrySet()) {
+            String k = def.getKey();
+            String v = def.getValue();
+            try {
+                Class<?> c = ZooKeeperServer.class.getClassLoader().loadClass(v);
+                Fixup fixup = (Fixup) c.getDeclaredConstructor().newInstance();
+                LOG.info("Using ACL fixup {} -> {}", k, fixup.getClass());
+                tmp.add(fixup);
+            } catch (Exception x) {
+                LOG.error("Failed to load ACL fixup {} -> {}", k, v, x);
+                throw new InitializationException(
+                    "Failed to load ACL fixup " + k + " -> " + v, x);
+            }
+        }
+
+        if (tmp.isEmpty()) {
+            LOG.info("Using builtin ACL fixup procedure");
+            tmp.add(ACLs::builtinFixup);
+        }
+
+        synchronized (ACLs.class) {
+            fixups.clear();
+            fixups.addAll(tmp);
+        }
+    }
 
     /**
      * This method checks out the acl making sure it isn't null or empty,
@@ -62,6 +115,17 @@ public class ACLs {
     }
 
     public static List<ACL> fixupACL(FixupContext context, List<ACL> acls)
+        throws KeeperException.InvalidACLException {
+
+        for (Fixup fixup : fixups) {
+            LOG.debug("Applying ACL fixup {}", fixup);
+            acls = fixup.apply(context, acls);
+        }
+
+        return acls;
+    }
+
+    public static List<ACL> builtinFixup(FixupContext context, List<ACL> acls)
         throws KeeperException.InvalidACLException {
         acls = requireNotEmpty(context, acls);
         acls = removeDuplicates(context, acls);

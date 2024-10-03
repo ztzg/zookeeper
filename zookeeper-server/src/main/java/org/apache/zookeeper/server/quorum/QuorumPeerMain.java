@@ -33,6 +33,7 @@ import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ServerMetrics;
 import org.apache.zookeeper.server.ZKDatabase;
 import org.apache.zookeeper.server.ZooKeeperServerMain;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.admin.AdminServer.AdminServerException;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
@@ -119,7 +120,7 @@ public class QuorumPeerMain {
         ServiceUtils.requestSystemExit(ExitCode.EXECUTION_FINISHED.getValue());
     }
 
-    protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServerException {
+    protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServerException, ACLs.InitializationException {
         QuorumPeerConfig config = new QuorumPeerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
@@ -142,7 +143,7 @@ public class QuorumPeerMain {
         }
     }
 
-    public void runFromConfig(QuorumPeerConfig config) throws IOException, AdminServerException {
+    public void runFromConfig(QuorumPeerConfig config) throws IOException, AdminServerException, ACLs.InitializationException {
         try {
             ManagedUtil.registerLog4jMBeans();
         } catch (JMException e) {
@@ -160,6 +161,7 @@ public class QuorumPeerMain {
         }
         try {
             ServerMetrics.metricsProviderInitialized(metricsProvider);
+            ACLs.initialize();
             ProviderRegistry.initialize();
             ServerCnxnFactory cnxnFactory = null;
             ServerCnxnFactory secureCnxnFactory = null;
