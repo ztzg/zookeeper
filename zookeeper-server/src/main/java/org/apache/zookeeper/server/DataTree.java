@@ -60,6 +60,7 @@ import org.apache.zookeeper.common.PathUtils;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
 import org.apache.zookeeper.data.StatPersisted;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.watch.IWatchManager;
 import org.apache.zookeeper.server.watch.WatchManagerFactory;
 import org.apache.zookeeper.server.watch.WatcherMode;
@@ -142,6 +143,11 @@ public class DataTree {
      * the path trie that keeps track of the quota nodes in this datatree
      */
     private final PathTrie pTrie = new PathTrie();
+
+    /**
+     * the path trie that keeps track of the ACL constraint nodes in this datatree
+     */
+    private final PathTrie aclConstraintsPrefixes = new PathTrie();
 
     /**
      * over-the-wire size of znode stat. Counting the fields of Stat class
@@ -502,15 +508,21 @@ public class DataTree {
             }
         }
         // now check if its one of the zookeeper node child
-        if (parentName.startsWith(quotaZookeeper)) {
-            // now check if it's the limit node
-            if (Quotas.limitNode.equals(childName)) {
-                // this is the limit node
-                // get the parent and add it to the trie
-                pTrie.addPath(Quotas.trimQuotaPath(parentName));
-            }
-            if (Quotas.statNode.equals(childName)) {
-                updateQuotaForPath(Quotas.trimQuotaPath(parentName));
+        if (parentName.startsWith(procZookeeper)) {
+            if (parentName.startsWith(quotaZookeeper)) {
+                // now check if it's the limit node
+                if (Quotas.limitNode.equals(childName)) {
+                    // this is the limit node
+                    // get the parent and add it to the trie
+                    pTrie.addPath(Quotas.trimQuotaPath(parentName));
+                }
+                if (Quotas.statNode.equals(childName)) {
+                    updateQuotaForPath(Quotas.trimQuotaPath(parentName));
+                }
+            } else if (parentName.startsWith(ACLs.ZOOKEEPER_ACL_PATH)) {
+                if (ACLs.ZOOKEEPER_ACL_CONSTRAINTS_NAME.equals(childName)) {
+                    aclConstraintsPrefixes.addPath(ACLs.trimConstraintsPath(parentName));
+                }
             }
         }
 
@@ -593,10 +605,14 @@ public class DataTree {
             }
         }
 
-        if (parentName.startsWith(procZookeeper) && Quotas.limitNode.equals(childName)) {
-            // delete the node in the trie.
-            // we need to update the trie as well
-            pTrie.deletePath(Quotas.trimQuotaPath(parentName));
+        if (parentName.startsWith(procZookeeper)) {
+            if (Quotas.limitNode.equals(childName)) {
+                // delete the node in the trie.
+                // we need to update the trie as well
+                pTrie.deletePath(Quotas.trimQuotaPath(parentName));
+            } else if (ACLs.ZOOKEEPER_ACL_CONSTRAINTS_NAME.equals(childName)) {
+                aclConstraintsPrefixes.deletePath(ACLs.trimConstraintsPath(parentName));
+            }
         }
 
         // also check to update the quotas for this node
@@ -675,6 +691,19 @@ public class DataTree {
         // we are not keeping a quota on the zookeeper
         // root node for now.
         String lastPrefix = pTrie.findMaxPrefix(path);
+
+        if (rootZookeeper.equals(lastPrefix) || lastPrefix.isEmpty()) {
+            return null;
+        } else {
+            return lastPrefix;
+        }
+    }
+
+    public String getMaxPrefixWithAclConstraints(String path) {
+        // do nothing for the root.
+        // we are not keeping ACL constraints on the zookeeper
+        // root node for now.
+        String lastPrefix = aclConstraintsPrefixes.findMaxPrefix(path);
 
         if (rootZookeeper.equals(lastPrefix) || lastPrefix.isEmpty()) {
             return null;
@@ -1285,6 +1314,38 @@ public class DataTree {
         traverseNode(quotaPath);
     }
 
+    private void traverseAclConstraints(String path) {
+        DataNode node = getNode(path);
+        String[] children;
+        synchronized (node) {
+            children = node.getChildren().toArray(new String[0]);
+        }
+        if (children.length == 0) {
+            // this node does not have a child
+            // is the leaf node
+            // check if it's the leaf node
+            String endString = "/" + ACLs.ZOOKEEPER_ACL_CONSTRAINTS_NAME;
+            if (path.endsWith(endString)) {
+                // ok this is the constraints node
+                // get the real node
+                String realPath = path.substring(ACLs.ZOOKEEPER_ACL_PATH.length(), path.indexOf(endString));
+                aclConstraintsPrefixes.addPath(realPath);
+            }
+            return;
+        }
+        for (String child : children) {
+            traverseAclConstraints(path + "/" + child);
+        }
+    }
+
+    private void setupAclConstraints() {
+        DataNode node = getNode(ACLs.ZOOKEEPER_ACL_PATH);
+        if (node == null) {
+            return;
+        }
+        traverseAclConstraints(ACLs.ZOOKEEPER_ACL_PATH);
+    }
+
     /**
      * this method uses a stringbuilder to create a new path for children. This
      * is faster than string appends ( str1 + str2).
@@ -1348,6 +1409,7 @@ public class DataTree {
         aclCache.deserialize(ia);
         nodes.clear();
         pTrie.clear();
+        aclConstraintsPrefixes.clear();
         nodeDataSize.set(0);
         String path = ia.readString("path");
         while (!"/".equals(path)) {
@@ -1391,6 +1453,8 @@ public class DataTree {
         // update the quotas - create path trie
         // and also update the stat nodes
         setupQuota();
+
+        setupAclConstraints();
 
         aclCache.purgeUnused();
     }
