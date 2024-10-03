@@ -62,13 +62,40 @@ public class ACLs {
 
     public static List<ACL> fixupACL(FixupContext context, List<ACL> acls)
         throws KeeperException.InvalidACLException {
+        acls = requireNotEmpty(context, acls);
+        acls = removeDuplicates(context, acls);
+        return expandAndValidateSchemes(context, acls);
+    }
+
+    public static List<ACL> requireNotEmpty(FixupContext context, List<ACL> acls)
+        throws KeeperException.InvalidACLException {
+        if (acls == null || acls.isEmpty()) {
+            throw new KeeperException.InvalidACLException(context.getPath());
+        }
+        return acls;
+    }
+
+    public static List<ACL> removeDuplicates(FixupContext context, List<ACL> acls) {
+        if (acls == null || acls.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // This would be done better with a Set but ACL hashcode/equals do not
+        // allow for null values
+        final ArrayList<ACL> retval = new ArrayList<>(acls.size());
+        for (final ACL acl : acls) {
+            if (!retval.contains(acl)) {
+                retval.add(acl);
+            }
+        }
+        return retval;
+    }
+
+    public static List<ACL> expandAndValidateSchemes(FixupContext context, List<ACL> uniqacls)
+        throws KeeperException.InvalidACLException {
         String path = context.getPath();
         // check for well formed ACLs
         // This resolves https://issues.apache.org/jira/browse/ZOOKEEPER-1877
-        List<ACL> uniqacls = removeDuplicates(acls);
-        if (uniqacls == null || uniqacls.size() == 0) {
-            throw new KeeperException.InvalidACLException(path);
-        }
         List<ACL> rv = new ArrayList<>();
         for (ACL a : uniqacls) {
             LOG.debug("Processing ACL: {}", a);
@@ -106,21 +133,5 @@ public class ACLs {
             }
         }
         return rv;
-    }
-
-    private static List<ACL> removeDuplicates(final List<ACL> acls) {
-        if (acls == null || acls.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // This would be done better with a Set but ACL hashcode/equals do not
-        // allow for null values
-        final ArrayList<ACL> retval = new ArrayList<>(acls.size());
-        for (final ACL acl : acls) {
-            if (!retval.contains(acl)) {
-                retval.add(acl);
-            }
-        }
-        return retval;
     }
 }
