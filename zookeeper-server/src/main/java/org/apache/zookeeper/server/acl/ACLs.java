@@ -19,6 +19,7 @@
 package org.apache.zookeeper.server.acl;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import org.apache.zookeeper.KeeperException;
@@ -99,39 +100,64 @@ public class ACLs {
         List<ACL> rv = new ArrayList<>();
         for (ACL a : uniqacls) {
             LOG.debug("Processing ACL: {}", a);
-            if (a == null) {
-                throw new KeeperException.InvalidACLException(path);
-            }
-            Id id = a.getId();
-            if (id == null || id.getScheme() == null) {
-                throw new KeeperException.InvalidACLException(path);
-            }
+            Id id = requireSaneId(path, a);
             if (id.getScheme().equals("world") && id.getId().equals("anyone")) {
                 rv.add(a);
             } else if (id.getScheme().equals("auth")) {
                 // This is the "auth" id, so we have to expand it to the
                 // authenticated ids of the requester
-                boolean authIdValid = false;
-                for (Id cid : context.getAuthInfo()) {
-                    ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(cid.getScheme());
-                    if (ap == null) {
-                        LOG.error("Missing AuthenticationProvider for {}", cid.getScheme());
-                    } else if (ap.isAuthenticated()) {
-                        authIdValid = true;
-                        rv.add(new ACL(a.getPerms(), cid));
-                    }
-                }
-                if (!authIdValid) {
-                    throw new KeeperException.InvalidACLException(path);
-                }
+                expandAuth(path, context.getAuthInfo(), a.getPerms(), rv);
             } else {
-                ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(id.getScheme());
-                if (ap == null || !ap.isValid(id.getId())) {
-                    throw new KeeperException.InvalidACLException(path);
-                }
+                validateId(path, id);
                 rv.add(a);
             }
         }
         return rv;
+    }
+
+    public static Id requireSaneId(String path, ACL aclElement) throws KeeperException.InvalidACLException {
+        if (aclElement == null) {
+            LOG.debug("Null ACL element");
+            throw new KeeperException.InvalidACLException(path);
+        }
+
+        Id id = aclElement.getId();
+        // Note: aclElement.getId().getId() is not checked for
+        // backwards compatibility!
+        if (id == null || id.getScheme() == null) {
+            LOG.debug("ACL element with Id {}", id);
+            throw new KeeperException.InvalidACLException(path);
+        }
+
+        return id;
+    }
+
+    public static void validateId(String path, Id id) throws KeeperException.InvalidACLException {
+        if (id == null || id.getScheme() == null) {
+            LOG.debug("Incomplete Id {}", id);
+            throw new KeeperException.InvalidACLException(path);
+        }
+
+        ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(id.getScheme());
+        if (ap == null || !ap.isValid(id.getId())) {
+            LOG.debug("Invalid Id {}", id);
+            throw new KeeperException.InvalidACLException(path);
+        }
+    }
+
+    public static void expandAuth(String path, List<Id> authInfo, int perms, Collection<ACL> collector) throws KeeperException.InvalidACLException {
+        boolean authIdValid = false;
+        for (Id cid : authInfo) {
+            ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(cid.getScheme());
+            if (ap == null) {
+                LOG.error("Missing AuthenticationProvider for {}", cid.getScheme());
+            } else if (ap.isAuthenticated()) {
+                authIdValid = true;
+                collector.add(new ACL(perms, cid));
+            }
+        }
+        if (!authIdValid) {
+            throw new KeeperException.InvalidACLException(path);
+        }
     }
 }
