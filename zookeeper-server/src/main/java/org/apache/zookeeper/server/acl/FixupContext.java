@@ -19,10 +19,14 @@
 package org.apache.zookeeper.server.acl;
 
 import java.util.List;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Id;
 
 public interface FixupContext {
     String getPath();
 
     List<Id> getAuthInfo();
+
+    byte[] loadConstraints()
+        throws KeeperException.InvalidACLException;
 }

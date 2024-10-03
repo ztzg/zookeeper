@@ -53,6 +53,16 @@ public class ACLs {
     public static final String ZOOKEEPER_ACL_CONSTRAINTS_NAME = "zookeeper_constraints";
 
     /**
+     * return the constraints acl path associated with this
+     * prefix
+     * @param path the actual path in zookeeper.
+     * @return the constraints acl path
+     */
+    public static String constraintsPath(String path) {
+        return ZOOKEEPER_ACL_PATH + path + "/" + ZOOKEEPER_ACL_CONSTRAINTS_NAME;
+    }
+
+    /**
      * return the real path associated with this
      * aclPath.
      * @param aclPath the aclPath which's started with /zookeeper/acl
@@ -127,6 +137,10 @@ public class ACLs {
 
                 public List<Id> getAuthInfo() {
                     return authInfo;
+                }
+
+                public byte[] loadConstraints() {
+                    return null;
                 }
             };
 
