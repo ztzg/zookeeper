@@ -58,6 +58,7 @@ import org.apache.zookeeper.common.ZKConfig;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ZKDatabase;
 import org.apache.zookeeper.server.ZooKeeperServer;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.persistence.FilePadding;
 import org.apache.zookeeper.server.quorum.QuorumPeer;
 import org.apache.zookeeper.server.util.OSMXBean;
@@ -79,6 +80,16 @@ public abstract class ClientBase extends ZKTestCase {
     protected boolean exceptionOnFailedConnect = false;
 
     long initialFdCount;
+
+    static {
+        try {
+            // TODO(ddiederen): Make it more dynamic and resettable,
+            // as for ...auth.ProviderRegistry.
+            ACLs.initialize();
+        } catch (ACLs.InitializationException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     public ClientBase() {
         super();
