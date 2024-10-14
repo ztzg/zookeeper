@@ -110,6 +110,16 @@ public class FileTxnSnapLog {
      * @param snapDir the snapshot directory
      */
     public FileTxnSnapLog(File dataDir, File snapDir) throws IOException {
+        this(dataDir, snapDir, /* forWrite */ true);
+    }
+
+    /**
+     * Constructor.
+     * @param dataDir the transaction directory
+     * @param snapDir the snapshot directory
+     * @param forWrite whether we intend to use this instance for writing
+     */
+    public FileTxnSnapLog(File dataDir, File snapDir, boolean forWrite) throws IOException {
         LOG.debug("Opening datadir:{} snapDir:{}", dataDir, snapDir);
 
         this.dataDir = new File(dataDir, version + VERSION);
@@ -117,10 +127,10 @@ public class FileTxnSnapLog {
 
         // by default create snap/log dirs, but otherwise complain instead
         // See ZOOKEEPER-1161 for more details
-        boolean enableAutocreate = Boolean.parseBoolean(
+        boolean enableAutocreate = forWrite && Boolean.parseBoolean(
             System.getProperty(ZOOKEEPER_DATADIR_AUTOCREATE, ZOOKEEPER_DATADIR_AUTOCREATE_DEFAULT));
 
-        trustEmptySnapshot = Boolean.getBoolean(ZOOKEEPER_SNAPSHOT_TRUST_EMPTY);
+        trustEmptySnapshot = forWrite && Boolean.getBoolean(ZOOKEEPER_SNAPSHOT_TRUST_EMPTY);
         LOG.info("{} : {}", ZOOKEEPER_SNAPSHOT_TRUST_EMPTY, trustEmptySnapshot);
 
         if (!this.dataDir.exists()) {
@@ -136,7 +146,7 @@ public class FileTxnSnapLog {
                 throw new DatadirException("Unable to create data directory " + this.dataDir);
             }
         }
-        if (!this.dataDir.canWrite()) {
+        if (forWrite && !this.dataDir.canWrite()) {
             throw new DatadirException("Cannot write to data directory " + this.dataDir);
         }
 
@@ -155,7 +165,7 @@ public class FileTxnSnapLog {
                 throw new DatadirException("Unable to create snap directory " + this.snapDir);
             }
         }
-        if (!this.snapDir.canWrite()) {
+        if (forWrite && !this.snapDir.canWrite()) {
             throw new DatadirException("Cannot write to snap directory " + this.snapDir);
         }
 
@@ -169,7 +179,7 @@ public class FileTxnSnapLog {
         txnLog = new FileTxnLog(this.dataDir);
         snapLog = new FileSnap(this.snapDir);
 
-        autoCreateDB = Boolean.parseBoolean(
+        autoCreateDB = forWrite && Boolean.parseBoolean(
             System.getProperty(ZOOKEEPER_DB_AUTOCREATE, ZOOKEEPER_DB_AUTOCREATE_DEFAULT));
     }
 
