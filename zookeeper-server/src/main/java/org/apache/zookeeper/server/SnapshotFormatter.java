@@ -100,7 +100,7 @@ public class SnapshotFormatter {
             ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
-        new SnapshotFormatter().run(snapshotFile, options.hasOption(OPT_DUMP_DATA), options.hasOption(OPT_JSON));
+        new SnapshotFormatter(snapshotFile, cl).run();
     }
 
     private static Options createOptions() {
@@ -138,7 +138,16 @@ public class SnapshotFormatter {
         ServiceUtils.requestSystemExit(exitCode.getValue());
     }
 
-    public void run(String snapshotFileName, boolean dumpData, boolean dumpJson) throws IOException {
+    private final String snapshotFileName;
+
+    private final CommandLine commandLine;
+
+    private SnapshotFormatter(String snapshotFileName, CommandLine commandLine) {
+        this.snapshotFileName = snapshotFileName;
+        this.commandLine = commandLine;
+    }
+
+    public void run() throws IOException {
         File snapshotFile = new File(snapshotFileName);
         try (InputStream is = SnapStream.getInputStream(snapshotFile)) {
             InputArchive ia = BinaryInputArchive.getArchive(is);
@@ -149,16 +158,16 @@ public class SnapshotFormatter {
             FileSnap.deserialize(dataTree, sessions, ia);
             long fileNameZxid = Util.getZxidFromName(snapshotFile.getName(), SNAPSHOT_FILE_PREFIX);
 
-            if (dumpJson) {
+            if (commandLine.hasOption(OPT_JSON)) {
                 printSnapshotJson(dataTree);
             } else {
-                printDetails(dataTree, sessions, dumpData, fileNameZxid);
+                printDetails(dataTree, sessions, fileNameZxid);
             }
         }
     }
 
-    private void printDetails(DataTree dataTree, Map<Long, Integer> sessions, boolean dumpData, long fileNameZxid) {
-        long dtZxid = printZnodeDetails(dataTree, dumpData);
+    private void printDetails(DataTree dataTree, Map<Long, Integer> sessions, long fileNameZxid) {
+        long dtZxid = printZnodeDetails(dataTree);
         printSessionDetails(dataTree, sessions);
         DataTree.ZxidDigest targetZxidDigest = dataTree.getDigestFromLoadedSnapshot();
         if (targetZxidDigest != null) {
@@ -168,15 +177,15 @@ public class SnapshotFormatter {
         System.out.println(String.format("----%nLast zxid: 0x%s", Long.toHexString(Math.max(fileNameZxid, dtZxid))));
     }
 
-    private long printZnodeDetails(DataTree dataTree, boolean dumpData) {
+    private long printZnodeDetails(DataTree dataTree) {
         System.out.println(String.format("ZNode Details (count=%d):", dataTree.getNodeCount()));
 
-        final long zxid = printZnode(dataTree, "/", dumpData);
+        final long zxid = printZnode(dataTree, "/");
         System.out.println("----");
         return zxid;
     }
 
-    private long printZnode(DataTree dataTree, String name, boolean dumpData) {
+    private long printZnode(DataTree dataTree, String name) {
         System.out.println("----");
         DataNode n = dataTree.getNode(name);
         Set<String> children;
@@ -185,7 +194,7 @@ public class SnapshotFormatter {
             System.out.println(name);
             printStat(n.stat);
             zxid = Math.max(n.stat.getMzxid(), n.stat.getPzxid());
-            if (dumpData) {
+            if (commandLine.hasOption(OPT_DUMP_DATA)) {
                 System.out.println("  data = " + (n.data == null ? "" : Base64.getEncoder().encodeToString(n.data)));
             } else {
                 System.out.println("  dataLength = " + (n.data == null ? 0 : n.data.length));
@@ -194,7 +203,7 @@ public class SnapshotFormatter {
         }
         if (children != null) {
             for (String child : children) {
-                long cxid = printZnode(dataTree, name + (name.equals("/") ? "" : "/") + child, dumpData);
+                long cxid = printZnode(dataTree, name + (name.equals("/") ? "" : "/") + child);
                 zxid = Math.max(zxid, cxid);
             }
         }
