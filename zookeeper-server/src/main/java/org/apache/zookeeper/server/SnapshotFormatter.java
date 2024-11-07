@@ -41,6 +41,7 @@ import org.apache.jute.BinaryInputArchive;
 import org.apache.jute.InputArchive;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.ZKUtil;
+import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.StatPersisted;
 import org.apache.zookeeper.server.persistence.FileSnap;
 import org.apache.zookeeper.server.persistence.SnapStream;
@@ -58,6 +59,8 @@ public class SnapshotFormatter {
     private static final String OPT_DUMP_DATA = "d";
 
     private static final String OPT_JSON = "json";
+
+    private static final String OPT_DUMP_ACLS = "dump-acls";
 
     // per-znode counter so ncdu treats each as a unique object
     private static Integer INODE_IDX = 1000;
@@ -116,6 +119,12 @@ public class SnapshotFormatter {
             Option.builder(OPT_JSON)
                 .longOpt("json")
                 .desc("Dump znode sizes in ncdu(1) JSON format")
+                .build());
+
+        options.addOption(
+            Option.builder()
+                .longOpt(OPT_DUMP_ACLS)
+                .desc("Dump the ACL entries for each znode")
                 .build());
 
         return options;
@@ -201,6 +210,26 @@ public class SnapshotFormatter {
             }
             children = n.getChildren();
         }
+        if (commandLine.hasOption(OPT_DUMP_ACLS)) {
+            try {
+                List<ACL> acl = dataTree.getACL(n);
+                if (acl == null || acl.isEmpty()) {
+                    System.err.println("Missing ACL; node: " + name);
+                }
+                if (acl != null) {
+                    for (ACL aclEntry : acl) {
+                        if (aclEntry == null || aclEntry.getId() == null) {
+                            continue;
+                        }
+                        System.out.println("  aclEntry = " + formatAclEntry(aclEntry));
+                    }
+                }
+            } catch (Exception x) {
+                // TODO: log?
+                System.err.println("Exception accessing ACL; node: " + name);
+                x.printStackTrace(System.err);
+            }
+        }
         if (children != null) {
             for (String child : children) {
                 long cxid = printZnode(dataTree, name + (name.equals("/") ? "" : "/") + child);
@@ -208,6 +237,25 @@ public class SnapshotFormatter {
             }
         }
         return zxid;
+    }
+
+    private static String formatAclEntry(ACL aclEntry) {
+        StringBuilder b = new StringBuilder();
+
+        b.append(aclEntry.getId().getScheme());
+        b.append(':');
+        b.append(aclEntry.getId().getId());
+        b.append(':');
+
+        String flags = "rwcda";
+        int perms = aclEntry.getPerms();
+        for (int i = 0; i < flags.length(); i++) {
+            if ((perms & (1 << i)) != 0) {
+                b.append(flags.charAt(i));
+            }
+        }
+
+        return b.toString();
     }
 
     private void printSessionDetails(DataTree dataTree, Map<Long, Integer> sessions) {
