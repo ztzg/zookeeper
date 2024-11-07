@@ -32,7 +32,8 @@ else
   . "$ZOOBINDIR"/zkEnv.sh
 fi
 
-"$JAVA" -cp "$CLASSPATH" $JVMFLAGS \
+exec "$JAVA" \
+     -cp "$CLASSPATH" \
+     -Dlogback.configurationFile=logback-cli.xml \
+     $JVMFLAGS \
      org.apache.zookeeper.server.SnapshotFormatter "$@"
-
-
