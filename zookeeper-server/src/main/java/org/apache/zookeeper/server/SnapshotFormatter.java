@@ -26,8 +26,17 @@ import java.io.InputStream;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.jute.BinaryInputArchive;
 import org.apache.jute.InputArchive;
 import org.apache.yetus.audience.InterfaceAudience;
@@ -46,6 +55,10 @@ import org.apache.zookeeper.util.ServiceUtils;
 @InterfaceAudience.Public
 public class SnapshotFormatter {
 
+    private static final String OPT_DUMP_DATA = "d";
+
+    private static final String OPT_JSON = "json";
+
     // per-znode counter so ncdu treats each as a unique object
     private static Integer INODE_IDX = 1000;
 
@@ -53,27 +66,26 @@ public class SnapshotFormatter {
      * USAGE: SnapshotFormatter snapshot_file or the ready-made script: zkSnapShotToolkit.sh
      */
     public static void main(String[] args) throws Exception {
+        Options options = createOptions();
         String snapshotFile = null;
-        boolean dumpData = false;
-        boolean dumpJson = false;
 
-        int i;
-        for (i = 0; i < args.length; i++) {
-            if (args[i].equals("-d")) {
-                dumpData = true;
-            } else if (args[i].equals("-json")) {
-                dumpJson = true;
-            } else {
-                snapshotFile = args[i];
-                i++;
-                break;
-            }
+        CommandLineParser parser = new DefaultParser();
+        CommandLine cl = null;
+        try {
+            cl = parser.parse(options, args);
+        } catch (ParseException x) {
+            showUsage(options, x);
+            return;
         }
-        if (args.length != i || snapshotFile == null) {
-            System.err.println("USAGE: SnapshotFormatter [-d|-json] snapshot_file");
-            System.err.println("       -d dump the data for each znode");
-            System.err.println("       -json dump znode info in json format");
-            ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
+
+        LinkedList<String> positionals = new LinkedList<>(cl.getArgList());
+
+        if (!positionals.isEmpty()) {
+            snapshotFile = positionals.removeFirst();
+        }
+
+        if (!positionals.isEmpty() || snapshotFile == null) {
+            showUsage(options, null);
             return;
         }
 
@@ -83,12 +95,47 @@ public class SnapshotFormatter {
             ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
-        if (dumpData && dumpJson) {
+        if (cl.hasOption(OPT_DUMP_DATA) && cl.hasOption(OPT_JSON)) {
             System.err.println("Cannot specify both data dump (-d) and json mode (-json) in same call");
             ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
-        new SnapshotFormatter().run(snapshotFile, dumpData, dumpJson);
+        new SnapshotFormatter().run(snapshotFile, options.hasOption(OPT_DUMP_DATA), options.hasOption(OPT_JSON));
+    }
+
+    private static Options createOptions() {
+        final Options options = new Options();
+
+        options.addOption(
+            Option.builder(OPT_DUMP_DATA)
+                .longOpt("dump-data")
+                .desc("Dump the data for each znode")
+                .build());
+
+        options.addOption(
+            Option.builder(OPT_JSON)
+                .longOpt("json")
+                .desc("Dump znode sizes in ncdu(1) JSON format")
+                .build());
+
+        return options;
+    }
+
+    private static void showUsage(Options options, ParseException x) {
+        ExitCode exitCode = ExitCode.INVALID_INVOCATION;
+        String footer = null;
+
+        if (x != null) {
+            footer = "\n" + x.getMessage();
+        }
+
+        HelpFormatter formatter = new HelpFormatter();
+        formatter.printHelp("SnapshotFormatter [-d|-json] snapshot_file",
+                            null,
+                            options,
+                            footer);
+
+        ServiceUtils.requestSystemExit(exitCode.getValue());
     }
 
     public void run(String snapshotFileName, boolean dumpData, boolean dumpJson) throws IOException {
