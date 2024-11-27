@@ -79,7 +79,7 @@ public class ConstraintBasedFixup4 implements Fixup {
 
         // Load comma-separated enum values.
         EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
-        Id targetId = null;
+        List<Id> targetIds = null;
 
         int lastIndex = 1;
         for (int i = 2; i <= data.length; i++) {
@@ -87,13 +87,12 @@ public class ConstraintBasedFixup4 implements Fixup {
                 String s = new String(data, lastIndex + 1, i - 1 - lastIndex,
                                       StandardCharsets.US_ASCII);
                 if (s.startsWith(UNSAFE_TO_PREFIX)) {
-                    if (targetId != null) {
-                        LOG.warn("Already seen {} {} in ACL constraint; "
-                                 + "ignoring {}", Flag.UNSAFE_TO, targetId, s);
-                    } else {
-                        targetId = extractId(s, UNSAFE_TO_PREFIX.length());
-                        flags.add(Flag.UNSAFE_TO);
+                    if (targetIds == null) {
+                        targetIds = new ArrayList<>();
                     }
+                    Id targetId = extractId(s, UNSAFE_TO_PREFIX.length());
+                    targetIds.add(targetId);
+                    flags.add(Flag.UNSAFE_TO);
                 } else if (s.length() > 0) {
                     flags.add(Flag.valueOf(s));
                 }
@@ -102,10 +101,16 @@ public class ConstraintBasedFixup4 implements Fixup {
         }
 
         if (flags.contains(Flag.UNSAFE_TO)) {
-            ACLs.validateId(context.getPath(), targetId);
+            String path = context.getPath();
+            if (targetIds == null || targetIds.isEmpty()) {
+                throw new KeeperException.InvalidACLException(path);
+            }
+            for (Id targetId : targetIds) {
+                ACLs.validateId(path, targetId);
+            }
         }
 
-        return applyFlags(context, acl, flags, targetId);
+        return applyFlags(context, acl, flags, targetIds);
     }
 
     protected Id extractId(String s, int at) throws ParseException {
@@ -119,7 +124,7 @@ public class ConstraintBasedFixup4 implements Fixup {
 
     protected static final int MODIFY = ZooDefs.Perms.ALL & ~ZooDefs.Perms.READ;
 
-    protected List<ACL> applyFlags(FixupContext context, List<ACL> acl, EnumSet<Flag> flags, Id targetId)
+    protected List<ACL> applyFlags(FixupContext context, List<ACL> acl, EnumSet<Flag> flags, List<Id> targetIds)
         throws KeeperException.InvalidACLException {
         String path = context.getPath();
         List<Id> authInfo = context.getAuthInfo();
@@ -140,7 +145,9 @@ public class ConstraintBasedFixup4 implements Fixup {
                     if (flags.contains(Flag.REJECT_UNSAFE)) {
                         throw new KeeperException.InvalidACLException(path);
                     } else if (flags.contains(Flag.UNSAFE_TO)) {
-                        newAcl.add(new ACL(perms, targetId));
+                        for (Id targetId : targetIds) {
+                            newAcl.add(new ACL(perms, targetId));
+                        }
                         if (permsHasAdmin) {
                             // Kind-of assumes that the target ID is
                             // part of "auth::"!
