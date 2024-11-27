@@ -117,6 +117,66 @@ public class ConstraintBasedFixup4Test {
         return acl;
     }
 
+    private List<Id> checkDecode(String constraints,
+                                 EnumSet<Flag> expectedFlags,
+                                 List<Id> expectedTargetIds)
+        throws ParseException {
+        EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
+
+        byte[] bytes = constraints.getBytes(StandardCharsets.UTF_8);
+        List<Id> targetIds = INSTANCE.decodeFlags(bytes, flags);
+
+        assertEquals(expectedFlags, flags);
+        assertEquals(expectedTargetIds, targetIds);
+
+        return targetIds;
+    }
+
+    @Test
+    public void testDecodeEmpty() throws ParseException {
+        checkDecode("4,", mkFlags(), mkIds());
+    }
+
+    @Test
+    public void testDecodeMany() throws ParseException {
+        checkDecode("4,REJECT_UNSAFE,MASK_UNSAFE,UNSAFE_TO_AUTH,ENSURE_AUTH_ADMIN,ENSURE_WORLD_READ,NO_KEEP_WORLD_READ",
+                    mkFlags(Flag.REJECT_UNSAFE,
+                            Flag.MASK_UNSAFE,
+                            Flag.UNSAFE_TO_AUTH,
+                            Flag.ENSURE_AUTH_ADMIN,
+                            Flag.ENSURE_WORLD_READ,
+                            Flag.NO_KEEP_WORLD_READ),
+                    mkIds());
+    }
+
+    @Test
+    public void testDecodeBadEmptyUnsafeTo() throws ParseException {
+        EnumSet<Flag> flags = mkFlags(Flag.UNSAFE_TO,
+                                      Flag.ENSURE_AUTH_ADMIN,
+                                      Flag.ENSURE_WORLD_READ);
+        List<Id> targetIds =
+            checkDecode("4,ENSURE_AUTH_ADMIN,UNSAFE_TO,ENSURE_WORLD_READ",
+                        flags,
+                        mkIds());
+
+        assertThrows(KeeperException.InvalidACLException.class, () -> {
+                INSTANCE.validateFlags(mkContext("/foo"), flags, targetIds);
+            });
+    }
+
+    @Test
+    public void testDecodeBadUnsafeToScheme() throws ParseException {
+        EnumSet<Flag> flags = mkFlags(Flag.UNSAFE_TO);
+        List<Id> targetIds =
+            checkDecode("4,UNSAFE_TO:yolo:blah",
+                        flags,
+                        mkIds("yolo:blah"));
+
+        assertThrows(KeeperException.InvalidACLException.class, () -> {
+                INSTANCE.validateFlags(mkContext("/foo"), flags, targetIds);
+            });
+    }
+
     private List<ACL> doApply(String constraints,
                               FixupContext context,
                               List<ACL> inputAcl)
@@ -152,7 +212,7 @@ public class ConstraintBasedFixup4Test {
         throws ParseException, KeeperException.InvalidACLException {
         checkApply("4,", mkContext("/foo"),
                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                   Collections.emptyList());
+                   ZooDefs.Ids.READ_ACL_UNSAFE);
     }
 
     @Test
@@ -172,9 +232,25 @@ public class ConstraintBasedFixup4Test {
     }
 
     @Test
+    public void testApplyNoKeepWorldRead()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,NO_KEEP_WORLD_READ", mkContext("/foo"),
+                   ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                   Collections.emptyList());
+    }
+
+    @Test
     public void testApplyUnsafeToId()
         throws ParseException, KeeperException.InvalidACLException {
         checkApply("4,UNSAFE_TO:sasl:foo", mkContext("/foo"),
+                   ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                   mkAcl("sasl:foo:cdrwa", "world:anyone:r"));
+    }
+
+    @Test
+    public void testApplyUnsafeToIdPure()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,UNSAFE_TO:sasl:foo,NO_KEEP_WORLD_READ", mkContext("/foo"),
                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
                    mkAcl("sasl:foo:cdrwa"));
     }
@@ -184,13 +260,22 @@ public class ConstraintBasedFixup4Test {
         throws ParseException, KeeperException.InvalidACLException {
         checkApply("4,UNSAFE_TO:sasl:foo,UNSAFE_TO:sasl:bar", mkContext("/foo"),
                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
-                   mkAcl("sasl:foo:cdrwa"));
+                   mkAcl("sasl:foo:cdrwa", "sasl:bar:cdrwa", "world:anyone:r"));
     }
 
     @Test
     public void testApplyUnsafeToAuth()
         throws ParseException, KeeperException.InvalidACLException {
         checkApply("4,UNSAFE_TO_AUTH",
+                   mkContext("/foo", "sasl:foo", "sasl:bar"),
+                   ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                   mkAcl("sasl:foo:cdrwa", "sasl:bar:cdrwa", "world:anyone:r"));
+    }
+
+    @Test
+    public void testApplyUnsafeToAuthPure()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,UNSAFE_TO_AUTH,NO_KEEP_WORLD_READ",
                    mkContext("/foo", "sasl:foo", "sasl:bar"),
                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
                    mkAcl("sasl:foo:cdrwa", "sasl:bar:cdrwa"));
@@ -202,6 +287,24 @@ public class ConstraintBasedFixup4Test {
         checkApply("4,ENSURE_AUTH_ADMIN",
                    mkContext("/foo", "sasl:foo", "sasl:bar"),
                    ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                   mkAcl("world:anyone:r", "sasl:foo:a", "sasl:bar:a"));
+    }
+
+    @Test
+    public void testApplyEnsureAuthAdminPure()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,ENSURE_AUTH_ADMIN,NO_KEEP_WORLD_READ",
+                   mkContext("/foo", "sasl:foo", "sasl:bar"),
+                   ZooDefs.Ids.OPEN_ACL_UNSAFE,
                    mkAcl("sasl:foo:a", "sasl:bar:a"));
+    }
+
+    @Test
+    public void testApplyEnsureWorldRead()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,ENSURE_WORLD_READ",
+                   mkContext("/foo", "sasl:foo", "sasl:bar"),
+                   mkAcl("sasl:foo:cdrwa"),
+                   mkAcl("sasl:foo:cdrwa", "world:anyone:r"));
     }
 }
