@@ -77,6 +77,14 @@ public class ConstraintBasedFixup4 implements Fixup {
         EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
         List<Id> targetIds = decodeFlags(data, flags);
 
+        validateFlags(context, flags, targetIds);
+
+        return applyFlags(context, acl, flags, targetIds);
+    }
+
+    protected void validateFlags(FixupContext context, EnumSet<Flag> flags, List<Id> targetIds)
+        throws KeeperException.InvalidACLException {
+        // (Optionally?) warn about invalid combinations?
         if (flags.contains(Flag.UNSAFE_TO)) {
             String path = context.getPath();
             if (targetIds == null || targetIds.isEmpty()) {
@@ -86,8 +94,6 @@ public class ConstraintBasedFixup4 implements Fixup {
                 ACLs.validateId(path, targetId);
             }
         }
-
-        return applyFlags(context, acl, flags, targetIds);
     }
 
     protected List<Id> decodeFlags(byte[] data, EnumSet<Flag> flags)
