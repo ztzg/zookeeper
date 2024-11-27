@@ -61,12 +61,19 @@ public class ConstraintBasedFixup4 implements Fixup {
     }
 
     protected enum Flag {
+        /** Throws KeeperException.InvalidACLException */
         REJECT_UNSAFE,
+        /** Remove unsafe bits */
         MASK_UNSAFE,
+        /** Replace unsafe elements by auth:: */
         UNSAFE_TO_AUTH,
+        /** Ensure auth:: (or UNSAFE_TO target) has :a */
         ENSURE_AUTH_ADMIN,
+        /** Replace elements by UNSAFE_TO:{target_id} */
         UNSAFE_TO,
+        /** Ensure world:anyone:r is included */
         ENSURE_WORLD_READ,
+        /** Do not keep world:anyone:r on UNSAFE_TO_* remapping */
         NO_KEEP_WORLD_READ,
     }
 
