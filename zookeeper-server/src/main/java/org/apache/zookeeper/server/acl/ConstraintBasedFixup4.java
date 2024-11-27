@@ -66,6 +66,8 @@ public class ConstraintBasedFixup4 implements Fixup {
         UNSAFE_TO_AUTH,
         ENSURE_AUTH_ADMIN,
         UNSAFE_TO,
+        ENSURE_WORLD_READ,
+        NO_KEEP_WORLD_READ,
     }
 
     protected static final String UNSAFE_TO_PREFIX = Flag.UNSAFE_TO + ":";
@@ -129,6 +131,8 @@ public class ConstraintBasedFixup4 implements Fixup {
         String path = context.getPath();
         List<Id> authInfo = context.getAuthInfo();
         boolean hasAdmin = false;
+        boolean hasWorldRead = false;
+        boolean removedWorldRead = false;
         List<ACL> newAcl = new ArrayList<>(acl.size());
 
         for (ACL aclElement : acl) {
@@ -137,10 +141,14 @@ public class ConstraintBasedFixup4 implements Fixup {
             String idid = id.getId();
             int perms = aclElement.getPerms();
             boolean permsHasAdmin = (perms & ZooDefs.Perms.ADMIN) != 0;
+            boolean permsHasRead = (perms & ZooDefs.Perms.READ) != 0;
             if ("world".equals(scheme) && "anyone".equals(idid)) {
                 if ((perms & MODIFY) == 0) {
-                    // We accept world READ-only.
-                    newAcl.add(aclElement);
+                    if (perms != 0) {
+                        // We accept world READ-only.
+                        newAcl.add(aclElement);
+                        hasWorldRead = permsHasRead;
+                    }
                 } else {
                     if (flags.contains(Flag.REJECT_UNSAFE)) {
                         throw new KeeperException.InvalidACLException(path);
@@ -148,13 +156,15 @@ public class ConstraintBasedFixup4 implements Fixup {
                         for (Id targetId : targetIds) {
                             newAcl.add(new ACL(perms, targetId));
                         }
+                        removedWorldRead = permsHasRead;
                         if (permsHasAdmin) {
-                            // Kind-of assumes that the target ID is
-                            // part of "auth::"!
+                            // Kind-of assumes that at least one of
+                            // the target IDs is part of "auth::"!
                             hasAdmin = true;
                         }
                     } else if (flags.contains(Flag.UNSAFE_TO_AUTH)) {
                         ACLs.expandAuth(path, authInfo, perms, newAcl);
+                        removedWorldRead = permsHasRead;
                         if (permsHasAdmin) {
                             hasAdmin = true;
                         }
@@ -162,7 +172,10 @@ public class ConstraintBasedFixup4 implements Fixup {
                         int newPerms = perms & ~MODIFY;
                         if (newPerms != 0) {
                             newAcl.add(new ACL(newPerms, id));
+                            hasWorldRead = permsHasRead;
                         }
+                    } else {
+                        removedWorldRead = permsHasRead;
                     }
                 }
             } else {
@@ -180,6 +193,14 @@ public class ConstraintBasedFixup4 implements Fixup {
                     }
                 }
                 newAcl.add(aclElement);
+            }
+        }
+
+        if (!hasWorldRead) {
+            if (flags.contains(Flag.ENSURE_WORLD_READ)
+                || (removedWorldRead
+                    && !flags.contains(Flag.NO_KEEP_WORLD_READ))) {
+                newAcl.add(ZooDefs.Ids.READ_ACL_UNSAFE.get(0));
             }
         }
 
