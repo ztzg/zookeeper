@@ -74,15 +74,32 @@ public class ConstraintBasedFixup4 implements Fixup {
 
     protected List<ACL> applyEncodedConstraints(FixupContext context, List<ACL> acl, byte[] data)
         throws ParseException, KeeperException.InvalidACLException {
+        EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
+        List<Id> targetIds = decodeFlags(data, flags);
+
+        if (flags.contains(Flag.UNSAFE_TO)) {
+            String path = context.getPath();
+            if (targetIds == null || targetIds.isEmpty()) {
+                throw new KeeperException.InvalidACLException(path);
+            }
+            for (Id targetId : targetIds) {
+                ACLs.validateId(path, targetId);
+            }
+        }
+
+        return applyFlags(context, acl, flags, targetIds);
+    }
+
+    protected List<Id> decodeFlags(byte[] data, EnumSet<Flag> flags)
+        throws ParseException {
         // Start with ASCII "4,"
         if (data.length < 2 || data[0] != '4' || data[1] != ',') {
             throw new ParseException("Unsupported constraint encoding", 0);
         }
 
-        // Load comma-separated enum values.
-        EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
         List<Id> targetIds = null;
 
+        // Load comma-separated enum values.
         int lastIndex = 1;
         for (int i = 2; i <= data.length; i++) {
             if (i == data.length || data[i] == ',') {
@@ -102,17 +119,7 @@ public class ConstraintBasedFixup4 implements Fixup {
             }
         }
 
-        if (flags.contains(Flag.UNSAFE_TO)) {
-            String path = context.getPath();
-            if (targetIds == null || targetIds.isEmpty()) {
-                throw new KeeperException.InvalidACLException(path);
-            }
-            for (Id targetId : targetIds) {
-                ACLs.validateId(path, targetId);
-            }
-        }
-
-        return applyFlags(context, acl, flags, targetIds);
+        return targetIds;
     }
 
     protected Id extractId(String s, int at) throws ParseException {
