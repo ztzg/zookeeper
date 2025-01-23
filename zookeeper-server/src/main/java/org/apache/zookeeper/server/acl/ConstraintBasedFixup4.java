@@ -75,6 +75,8 @@ public class ConstraintBasedFixup4 implements Fixup {
         ENSURE_WORLD_READ,
         /** Do not keep world:anyone:r on UNSAFE_TO_* remapping */
         NO_KEEP_WORLD_READ,
+        /** Do not log ACL transformation(s) */
+        NO_LOG,
     }
 
     protected static final String UNSAFE_TO_PREFIX = Flag.UNSAFE_TO + ":";
@@ -153,6 +155,7 @@ public class ConstraintBasedFixup4 implements Fixup {
         boolean hasAdmin = false;
         boolean hasWorldRead = false;
         boolean removedWorldRead = false;
+        boolean fixups = false;
         List<ACL> newAcl = new ArrayList<>(acl.size());
 
         for (ACL aclElement : acl) {
@@ -182,20 +185,24 @@ public class ConstraintBasedFixup4 implements Fixup {
                             // the target IDs is part of "auth::"!
                             hasAdmin = true;
                         }
+                        fixups = true;
                     } else if (flags.contains(Flag.UNSAFE_TO_AUTH)) {
                         ACLs.expandAuth(path, authInfo, perms, newAcl);
                         removedWorldRead = permsHasRead;
                         if (permsHasAdmin) {
                             hasAdmin = true;
                         }
+                        fixups = true;
                     } else if (flags.contains(Flag.MASK_UNSAFE)) {
                         int newPerms = perms & ~MODIFY;
                         if (newPerms != 0) {
                             newAcl.add(new ACL(newPerms, id));
                             hasWorldRead = permsHasRead;
                         }
+                        fixups = true;
                     } else {
                         removedWorldRead = permsHasRead;
+                        fixups = true;
                     }
                 }
             } else {
@@ -221,11 +228,19 @@ public class ConstraintBasedFixup4 implements Fixup {
                 || (removedWorldRead
                     && !flags.contains(Flag.NO_KEEP_WORLD_READ))) {
                 newAcl.add(ZooDefs.Ids.READ_ACL_UNSAFE.get(0));
+                fixups = true;
             }
         }
 
         if (!hasAdmin && flags.contains(Flag.ENSURE_AUTH_ADMIN)) {
             ACLs.expandAuth(path, authInfo, ZooDefs.Perms.ADMIN, newAcl);
+            fixups = true;
+        }
+
+        if (fixups && !flags.contains(Flag.NO_LOG)) {
+            LOG.info("Fixed up ACL for path {} in session 0x{} from {} to {}",
+                     path, Long.toHexString(context.getSessionId()),
+                     acl, newAcl);
         }
 
         return newAcl;
