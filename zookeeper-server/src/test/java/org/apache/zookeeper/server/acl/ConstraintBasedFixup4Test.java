@@ -66,6 +66,10 @@ public class ConstraintBasedFixup4Test {
                 return path;
             }
 
+            public long getSessionId() {
+                return -1;
+            }
+
             public List<Id> getAuthInfo() {
                 return ids;
             }

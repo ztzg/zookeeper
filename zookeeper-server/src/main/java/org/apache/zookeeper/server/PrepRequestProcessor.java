@@ -551,7 +551,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
             SetACLRequest setAclRequest = (SetACLRequest) record;
             path = setAclRequest.getPath();
             validatePath(path, request.sessionId);
-            List<ACL> listACL = fixupACL(path, request.authInfo, setAclRequest.getAcl());
+            List<ACL> listACL = fixupACL(path, request.sessionId, request.authInfo, setAclRequest.getAcl());
             nodeRecord = getRecordForPath(path);
             zks.checkACL(request.cnxn, nodeRecord.acl, ZooDefs.Perms.ADMIN, request.authInfo, path, listACL);
             newVersion = checkAndIncVersion(nodeRecord.stat.getAversion(), setAclRequest.getVersion(), path);
@@ -661,7 +661,7 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
         validateCreateRequest(path, createMode, request, ttl);
         String parentPath = validatePathForCreate(path, request.sessionId);
 
-        List<ACL> listACL = fixupACL(path, request.authInfo, acl);
+        List<ACL> listACL = fixupACL(path, request.sessionId, request.authInfo, acl);
         ChangeRecord parentRecord = getRecordForPath(parentPath);
 
         zks.checkACL(request.cnxn, parentRecord.acl, ZooDefs.Perms.CREATE, request.authInfo, path, listACL);
@@ -957,10 +957,14 @@ public class PrepRequestProcessor extends ZooKeeperCriticalThread implements Req
         }
     }
 
-    private List<ACL> fixupACL(String path, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
+    private List<ACL> fixupACL(String path, long sessionId, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
         FixupContext context = new FixupContext() {
                 public String getPath() {
                     return path;
+                }
+
+                public long getSessionId() {
+                    return sessionId;
                 }
 
                 public List<Id> getAuthInfo() {

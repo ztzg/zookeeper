@@ -129,10 +129,14 @@ public class ACLs {
      * @return verified and expanded ACLs
      * @throws KeeperException.InvalidACLException
      */
-    public static List<ACL> fixupACL(String path, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
+    public static List<ACL> fixupACL(String path, long sessionId, List<Id> authInfo, List<ACL> acls) throws KeeperException.InvalidACLException {
         FixupContext context = new FixupContext() {
                 public String getPath() {
                     return path;
+                }
+
+                public long getSessionId() {
+                    return sessionId;
                 }
 
                 public List<Id> getAuthInfo() {

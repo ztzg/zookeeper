@@ -25,6 +25,8 @@ import org.apache.zookeeper.data.Id;
 public interface FixupContext {
     String getPath();
 
+    long getSessionId();
+
     List<Id> getAuthInfo();
 
     byte[] loadConstraints()
