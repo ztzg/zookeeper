@@ -47,6 +47,8 @@ import org.apache.zookeeper.server.persistence.FileSnap;
 import org.apache.zookeeper.server.persistence.SnapStream;
 import org.apache.zookeeper.server.persistence.Util;
 import org.apache.zookeeper.util.ServiceUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dump a snapshot file to stdout.
@@ -55,6 +57,7 @@ import org.apache.zookeeper.util.ServiceUtils;
  */
 @InterfaceAudience.Public
 public class SnapshotFormatter {
+    private static final Logger LOG = LoggerFactory.getLogger(SnapshotFormatter.class);
 
     private static final String OPT_DUMP_DATA = "d";
 
@@ -94,12 +97,12 @@ public class SnapshotFormatter {
 
         String error = ZKUtil.validateFileInput(snapshotFile);
         if (null != error) {
-            System.err.println(error);
+            LOG.error(error);
             ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
         if (cl.hasOption(OPT_DUMP_DATA) && cl.hasOption(OPT_JSON)) {
-            System.err.println("Cannot specify both data dump (-d) and json mode (-json) in same call");
+            LOG.error("Cannot specify both data dump (-d) and json mode (-json) in same call");
             ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
@@ -214,7 +217,7 @@ public class SnapshotFormatter {
             try {
                 List<ACL> acl = dataTree.getACL(n);
                 if (acl == null || acl.isEmpty()) {
-                    System.err.println("Missing ACL; node: " + name);
+                    LOG.warn("Missing ACL; node: {}", name);
                 }
                 if (acl != null) {
                     for (ACL aclEntry : acl) {
@@ -225,9 +228,7 @@ public class SnapshotFormatter {
                     }
                 }
             } catch (Exception x) {
-                // TODO: log?
-                System.err.println("Exception accessing ACL; node: " + name);
-                x.printStackTrace(System.err);
+                LOG.error("Exception accessing ACL; node: " + name, x);
             }
         }
         if (children != null) {
@@ -297,7 +298,7 @@ public class SnapshotFormatter {
         final DataNode n = dataTree.getNode(fullPath);
 
         if (null == n) {
-            System.err.println("DataTree Node for " + fullPath + " doesn't exist");
+            LOG.warn("DataTree Node for {} doesn't exist", fullPath);
             return;
         }
 
