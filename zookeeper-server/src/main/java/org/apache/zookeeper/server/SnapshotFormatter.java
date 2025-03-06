@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -44,6 +45,7 @@ import org.apache.zookeeper.ZKUtil;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.StatPersisted;
 import org.apache.zookeeper.server.persistence.FileSnap;
+import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 import org.apache.zookeeper.server.persistence.SnapStream;
 import org.apache.zookeeper.server.persistence.Util;
 import org.apache.zookeeper.util.ServiceUtils;
@@ -57,6 +59,14 @@ import org.slf4j.LoggerFactory;
  */
 @InterfaceAudience.Public
 public class SnapshotFormatter {
+    public interface Processor<A> {
+        A apply(DataTree dataTree, Map<Long, Integer> sessions, long lastZxid, A acc) throws IOException;
+    }
+
+    public interface Fold<A> {
+        A apply(DataTree dataTree, String path, A acc) throws IOException;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(SnapshotFormatter.class);
 
     private static final String OPT_DUMP_DATA = "d";
@@ -65,8 +75,21 @@ public class SnapshotFormatter {
 
     private static final String OPT_DUMP_ACLS = "dump-acls";
 
+    private static final String OPT_LOAD_DB = "load-db";
+
+    private static final String OPT_DATA_LOG_DIR = "data-log-dir";
+
     // per-znode counter so ncdu treats each as a unique object
     private static Integer INODE_IDX = 1000;
+
+    private final String snapOrSnapDir;
+
+    private final CommandLine commandLine;
+
+    private SnapshotFormatter(String snapOrSnapDir, CommandLine commandLine) {
+        this.snapOrSnapDir = snapOrSnapDir;
+        this.commandLine = commandLine;
+    }
 
     /**
      * USAGE: SnapshotFormatter snapshot_file or the ready-made script: zkSnapShotToolkit.sh
@@ -93,12 +116,6 @@ public class SnapshotFormatter {
         if (!positionals.isEmpty() || snapshotFile == null) {
             showUsage(options, null);
             return;
-        }
-
-        String error = ZKUtil.validateFileInput(snapshotFile);
-        if (null != error) {
-            LOG.error(error);
-            ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
         }
 
         if (cl.hasOption(OPT_DUMP_DATA) && cl.hasOption(OPT_JSON)) {
@@ -130,6 +147,20 @@ public class SnapshotFormatter {
                 .desc("Dump the ACL entries for each znode")
                 .build());
 
+        options.addOption(
+            Option.builder()
+                .longOpt(OPT_LOAD_DB)
+                .desc("Also load transaction logs")
+                .build());
+
+        options.addOption(
+            Option.builder()
+                .longOpt(OPT_DATA_LOG_DIR)
+                .desc("Look for --load-db transaction logs in <dir>")
+                .hasArg()
+                .argName("dir")
+                .build());
+
         return options;
     }
 
@@ -150,17 +181,45 @@ public class SnapshotFormatter {
         ServiceUtils.requestSystemExit(exitCode.getValue());
     }
 
-    private final String snapshotFileName;
-
-    private final CommandLine commandLine;
-
-    private SnapshotFormatter(String snapshotFileName, CommandLine commandLine) {
-        this.snapshotFileName = snapshotFileName;
-        this.commandLine = commandLine;
+    public void run() throws IOException {
+        Object acc = this;
+        apply(this::builtinProcessor, acc);
     }
 
-    public void run() throws IOException {
-        File snapshotFile = new File(snapshotFileName);
+    public <A> A apply(Processor<A> processor, A acc) throws IOException {
+        if (commandLine.hasOption(OPT_LOAD_DB)) {
+            return processDataBase(processor, acc);
+        } else {
+            return processSnapshot(processor, acc);
+        }
+    }
+
+    private <A> A processDataBase(Processor<A> processor, A acc) throws IOException {
+        File snapDir = new File(snapOrSnapDir);
+
+        File dataLogDir = snapDir;
+        if (commandLine.hasOption(OPT_DATA_LOG_DIR)) {
+            dataLogDir =
+                new File (commandLine.getOptionValue(OPT_DATA_LOG_DIR));
+        }
+
+        FileTxnSnapLog snapLog =
+            new FileTxnSnapLog(dataLogDir, snapDir, /* forWrite */ false);
+        ZKDatabase zkDb = new ZKDatabase(snapLog);
+
+        long lastZxid = zkDb.loadDataBase();
+
+        return processor.apply(zkDb.getDataTree(), zkDb.getSessionWithTimeOuts(), lastZxid, acc);
+    }
+
+    private <A> A processSnapshot(Processor<A> processor, A acc) throws IOException {
+        String error = ZKUtil.validateFileInput(snapOrSnapDir);
+        if (null != error) {
+            LOG.error(error);
+            ServiceUtils.requestSystemExit(ExitCode.INVALID_INVOCATION.getValue());
+        }
+
+        File snapshotFile = new File(snapOrSnapDir);
         try (InputStream is = SnapStream.getInputStream(snapshotFile)) {
             InputArchive ia = BinaryInputArchive.getArchive(is);
 
@@ -170,15 +229,29 @@ public class SnapshotFormatter {
             FileSnap.deserialize(dataTree, sessions, ia);
             long fileNameZxid = Util.getZxidFromName(snapshotFile.getName(), SNAPSHOT_FILE_PREFIX);
 
-            if (commandLine.hasOption(OPT_JSON)) {
-                printSnapshotJson(dataTree);
-            } else {
-                printDetails(dataTree, sessions, fileNameZxid);
-            }
+            return processor.apply(dataTree, sessions, fileNameZxid, acc);
         }
     }
 
-    private void printDetails(DataTree dataTree, Map<Long, Integer> sessions, long fileNameZxid) {
+    public Object builtinProcessor(DataTree dataTree, Map<Long, Integer> sessions, long lastZxid, Object acc) throws IOException {
+        if (commandLine.hasOption(OPT_JSON)) {
+            printSnapshotJson(dataTree);
+        } else {
+            printDetails(dataTree, sessions, lastZxid);
+        }
+        return acc;
+    }
+
+    public static <A> A applyToChildren(DataTree dataTree, String parentPath, Collection<String> childNames, Fold<A> fold, A acc) throws IOException {
+        String sep = parentPath.equals("/") ? "" : "/";
+        for (String childName : childNames) {
+            String path = parentPath + sep + childName;
+            acc = fold.apply(dataTree, path, acc);
+        }
+        return acc;
+    }
+
+    private void printDetails(DataTree dataTree, Map<Long, Integer> sessions, long fileNameZxid) throws IOException {
         long dtZxid = printZnodeDetails(dataTree);
         printSessionDetails(dataTree, sessions);
         DataTree.ZxidDigest targetZxidDigest = dataTree.getDigestFromLoadedSnapshot();
@@ -189,19 +262,18 @@ public class SnapshotFormatter {
         System.out.println(String.format("----%nLast zxid: 0x%s", Long.toHexString(Math.max(fileNameZxid, dtZxid))));
     }
 
-    private long printZnodeDetails(DataTree dataTree) {
+    private long printZnodeDetails(DataTree dataTree) throws IOException {
         System.out.println(String.format("ZNode Details (count=%d):", dataTree.getNodeCount()));
 
-        final long zxid = printZnode(dataTree, "/");
+        final long zxid = printZnode(dataTree, "/", 0L);
         System.out.println("----");
         return zxid;
     }
 
-    private long printZnode(DataTree dataTree, String name) {
+    private Long printZnode(DataTree dataTree, String name, Long zxid) throws IOException {
         System.out.println("----");
         DataNode n = dataTree.getNode(name);
         Set<String> children;
-        long zxid;
         synchronized (n) { // keep findbugs happy
             System.out.println(name);
             printStat(n.stat);
@@ -238,10 +310,7 @@ public class SnapshotFormatter {
             }
         }
         if (children != null) {
-            for (String child : children) {
-                long cxid = printZnode(dataTree, name + (name.equals("/") ? "" : "/") + child);
-                zxid = Math.max(zxid, cxid);
-            }
+            zxid = applyToChildren(dataTree, name, children, this::printZnode, zxid);
         }
         return zxid;
     }
@@ -265,7 +334,7 @@ public class SnapshotFormatter {
         return b.toString();
     }
 
-    private void printSessionDetails(DataTree dataTree, Map<Long, Integer> sessions) {
+    private static void printSessionDetails(DataTree dataTree, Map<Long, Integer> sessions) {
         System.out.println("Session Details (sid, timeout, ephemeralCount):");
         for (Map.Entry<Long, Integer> e : sessions.entrySet()) {
             long sid = e.getKey();
@@ -273,7 +342,7 @@ public class SnapshotFormatter {
         }
     }
 
-    private void printStat(StatPersisted stat) {
+    private static void printStat(StatPersisted stat) {
         printHex("cZxid", stat.getCzxid());
         System.out.println("  ctime = " + new Date(stat.getCtime()).toString());
         printHex("mZxid", stat.getMzxid());
@@ -285,11 +354,11 @@ public class SnapshotFormatter {
         printHex("ephemeralOwner", stat.getEphemeralOwner());
     }
 
-    private void printHex(String prefix, long value) {
+    private static void printHex(String prefix, long value) {
         System.out.println(String.format("  %s = %#016x", prefix, value));
     }
 
-    private void printSnapshotJson(final DataTree dataTree) {
+    private static void printSnapshotJson(final DataTree dataTree) throws IOException {
         JsonStringEncoder encoder = JsonStringEncoder.getInstance();
         System.out.printf(
             "[1,0,{\"progname\":\"SnapshotFormatter.java\",\"progver\":\"0.01\",\"timestamp\":%d}",
@@ -298,14 +367,14 @@ public class SnapshotFormatter {
         System.out.print("]");
     }
 
-    private void printZnodeJson(final DataTree dataTree, final String fullPath, JsonStringEncoder encoder) {
+    private static JsonStringEncoder printZnodeJson(final DataTree dataTree, final String fullPath, JsonStringEncoder encoder) throws IOException {
 
 
         final DataNode n = dataTree.getNode(fullPath);
 
         if (null == n) {
             LOG.warn("DataTree Node for {} doesn't exist", fullPath);
-            return;
+            return encoder;
         }
 
         final String name = fullPath.equals("/")
@@ -333,13 +402,11 @@ public class SnapshotFormatter {
         }
         if (children != null && children.size() > 0) {
             System.out.print("[" + nodeSB);
-            for (String child : children) {
-                printZnodeJson(dataTree, fullPath + (fullPath.equals("/") ? "" : "/") + child, encoder);
-            }
+            encoder = applyToChildren(dataTree, fullPath, children, SnapshotFormatter::printZnodeJson, encoder);
             System.out.print("]");
         } else {
             System.out.print(nodeSB);
         }
+        return encoder;
     }
-
 }
