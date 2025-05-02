@@ -94,6 +94,11 @@ import org.slf4j.LoggerFactory;
  */
 public class DataTree {
 
+    public enum CheckAclMappingMode {
+        WARN,
+        FATAL,
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(DataTree.class);
 
     private final RateLogger RATE_LOGGER = new RateLogger(LOG, 15 * 60 * 1000);
@@ -824,6 +829,39 @@ public class DataTree {
 
     public boolean getLenientAcls() {
         return lenientAcls;
+    }
+
+    public void checkAclMapping(CheckAclMappingMode mode) {
+        aclCache.purgeUnused();
+
+        int errors = 0;
+
+        for (Map.Entry<String, DataNode> entry : nodes.entrySet()) {
+            DataNode node = entry.getValue();
+            Long aclId = null;
+            List<ACL> acl = null;
+            try {
+                synchronized (node) {
+                    aclId = node.acl;
+                    acl = aclCache.convertLong(aclId);
+                }
+                if (acl == null) {
+                    LOG.error("Null ACL on node '{}' ({})", entry.getKey(), aclId);
+                }
+            } catch (RuntimeException x) {
+                LOG.error("Missing ACL on node '{}' ({})", entry.getKey(), aclId, x);
+            }
+            if (acl == null) {
+                errors++;
+            }
+        }
+        if (errors > 0) {
+            if (mode == CheckAclMappingMode.FATAL) {
+                throw new RuntimeException("Inconsistent ACL state (" + errors + " errors detected)");
+            } else {
+                LOG.error("Observed {} ACL errors", errors);
+            }
+        }
     }
 
     public static class ProcessTxnResult {
