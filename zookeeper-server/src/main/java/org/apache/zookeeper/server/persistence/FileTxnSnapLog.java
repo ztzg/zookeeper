@@ -333,6 +333,9 @@ public class FileTxnSnapLog {
         int txnLoaded = 0;
         long startTime = Time.currentElapsedTime();
         try {
+            // ZOOKEEPER-4846: ACLs may be missing from the mapping
+            // when replaying transactions on top of a fuzzy snapshot.
+            dt.setLenientAcls(true);
             while (true) {
                 // iterator points to
                 // the first valid txn when initialized
@@ -363,6 +366,7 @@ public class FileTxnSnapLog {
                 }
             }
         } finally {
+            dt.setLenientAcls(false);
             if (itr != null) {
                 itr.close();
             }
