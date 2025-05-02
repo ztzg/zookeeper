@@ -647,6 +647,9 @@ public class Learner {
             boolean writeToTxnLog = !snapshotNeeded;
             TxnLogEntry logEntry;
             // we are now going to start getting transactions to apply followed by an UPTODATE
+            // ZOOKEEPER-4846: ACLs may be missing from the mapping
+            // when replaying transactions on top of a fuzzy snapshot.
+            zk.getZKDatabase().getDataTree().setLenientAcls(true);
             outerLoop:
             while (self.isRunning()) {
                 readPacket(qp);
@@ -821,6 +824,7 @@ public class Learner {
                     break;
                 }
             }
+            zk.getZKDatabase().getDataTree().setLenientAcls(false);
         }
         ack.setZxid(ZxidUtils.makeZxid(newEpoch, 0));
         writePacket(ack, true);
