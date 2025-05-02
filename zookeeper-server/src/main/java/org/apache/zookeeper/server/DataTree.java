@@ -165,6 +165,8 @@ public class DataTree {
 
     private final ReferenceCountedACLCache aclCache = new ReferenceCountedACLCache();
 
+    private boolean lenientAcls = false;
+
     // The maximum number of tree digests that we will keep in our history
     public static final int DIGEST_LOG_LIMIT = 1024;
 
@@ -791,13 +793,37 @@ public class DataTree {
     }
 
     public List<ACL> getACL(DataNode node) {
-        synchronized (node) {
-            return aclCache.convertLong(node.acl);
+        if (!lenientAcls) {
+            synchronized (node) {
+                return aclCache.convertLong(node.acl);
+            }
+        } else {
+            Long aclId = null;
+            try {
+                synchronized (node) {
+                    aclId = node.acl;
+                    return aclCache.convertLong(aclId);
+                }
+            } catch (RuntimeException x) {
+                // ZOOKEEPER-4846: The ACL may be missing from the
+                // mapping when replaying transactions on top of a
+                // fuzzy snapshot.
+                LOG.warn("Leniently ignoring missing ACL ID " + aclId, x);
+                return null;
+            }
         }
     }
 
     public int aclCacheSize() {
         return aclCache.size();
+    }
+
+    public void setLenientAcls(boolean lenient) {
+        lenientAcls = lenient;
+    }
+
+    public boolean getLenientAcls() {
+        return lenientAcls;
     }
 
     public static class ProcessTxnResult {
