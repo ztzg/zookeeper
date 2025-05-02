@@ -31,6 +31,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -50,6 +51,7 @@ import org.apache.jute.Record;
 import org.apache.zookeeper.ZooDefs.OpCode;
 import org.apache.zookeeper.common.Time;
 import org.apache.zookeeper.common.X509Exception;
+import org.apache.zookeeper.server.DataTree.CheckAclMappingMode;
 import org.apache.zookeeper.server.ExitCode;
 import org.apache.zookeeper.server.Request;
 import org.apache.zookeeper.server.ServerCnxn;
@@ -130,11 +132,21 @@ public class Learner {
     public static final boolean closeSocketAsync = Boolean
         .parseBoolean(ConfigUtils.getPropertyBackwardCompatibleWay(LEARNER_CLOSE_SOCKET_ASYNC));
 
+    public static final String LEARNER_CHECK_ACLS = "zookeeper.learner.check.acls";
+    private static boolean checkAcls;
+    private static CheckAclMappingMode checkAclsMode = CheckAclMappingMode.WARN;
+
     static {
         LOG.info("leaderConnectDelayDuringRetryMs: {}", leaderConnectDelayDuringRetryMs);
         LOG.info("TCP NoDelay set to: {}", nodelay);
         LOG.info("{} = {}", LEARNER_ASYNC_SENDING, asyncSending);
         LOG.info("{} = {}", LEARNER_CLOSE_SOCKET_ASYNC, closeSocketAsync);
+        String checkAclsStr = System.getProperty(LEARNER_CHECK_ACLS, "false");
+        checkAcls = !checkAclsStr.equalsIgnoreCase("false");
+        if (checkAcls) {
+            checkAclsMode = CheckAclMappingMode.valueOf(checkAclsStr.toUpperCase(Locale.ROOT));
+        }
+        LOG.info("{} = {}", LEARNER_CHECK_ACLS, checkAclsStr);
     }
 
     final ConcurrentHashMap<Long, ServerCnxn> pendingRevalidations = new ConcurrentHashMap<>();
@@ -825,6 +837,12 @@ public class Learner {
                 }
             }
             zk.getZKDatabase().getDataTree().setLenientAcls(false);
+            if (checkAcls) {
+                long startTime = Time.currentElapsedTime();
+                zk.getZKDatabase().getDataTree().checkAclMapping(checkAclsMode);
+                long checkTime = Time.currentElapsedTime() - startTime;
+                LOG.info("Checked ACL mapping consistency in {} ms", checkTime);
+            }
         }
         ack.setZxid(ZxidUtils.makeZxid(newEpoch, 0));
         writePacket(ack, true);
