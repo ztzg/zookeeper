@@ -18,6 +18,7 @@
 
 package org.apache.zookeeper.server;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -96,6 +97,7 @@ public class DataTree {
 
     public enum CheckAclMappingMode {
         WARN,
+        FIXUP,
         FATAL,
     }
 
@@ -831,6 +833,7 @@ public class DataTree {
         return lenientAcls;
     }
 
+    @SuppressFBWarnings("RC_REF_COMPARISON")
     public void checkAclMapping(CheckAclMappingMode mode) {
         aclCache.purgeUnused();
 
@@ -853,6 +856,22 @@ public class DataTree {
             }
             if (acl == null) {
                 errors++;
+                if (mode == CheckAclMappingMode.FIXUP) {
+                    Long aclId2 = null;
+                    Long newAclId = null;
+                    synchronized (node) {
+                        aclId2 = node.acl;
+                        // "Converting" null results in non-refcounted
+                        // OPEN_ACL_UNSAFE.
+                        newAclId = node.acl = aclCache.convertAcls(null);
+                    }
+                    LOG.warn("Fixed ACL on node '{}' from {} to {}",
+                             entry.getKey(), aclId, newAclId);
+                    if (aclId != aclId2) {
+                        LOG.warn("Race condition during ACL fixup! {}, {}, {}",
+                                 aclId, aclId2, newAclId);
+                    }
+                }
             }
         }
         if (errors > 0) {
