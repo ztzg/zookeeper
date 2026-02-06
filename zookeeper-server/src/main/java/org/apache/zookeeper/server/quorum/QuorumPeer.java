@@ -785,6 +785,8 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
      */
     protected String quorumServerLoginContext;
 
+    protected Set<String> quorumServerAuthorizedPrincipals = Collections.emptySet();
+
     // TODO: need to tune the default value of thread size
     private static final int QUORUM_CNXN_THREADS_SIZE_DEFAULT_VALUE = 20;
     /**
@@ -1115,7 +1117,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             for (QuorumServer qs : getView().values()) {
                 authzHosts.add(qs.hostname);
             }
-            authServer = new SaslQuorumAuthServer(isQuorumServerSaslAuthRequired(), quorumServerLoginContext, Collections.emptySet(), authzHosts);
+            authServer = new SaslQuorumAuthServer(isQuorumServerSaslAuthRequired(), quorumServerLoginContext, quorumServerAuthorizedPrincipals, authzHosts);
             authLearner = new SaslQuorumAuthLearner(isQuorumLearnerSaslAuthRequired(), quorumServicePrincipal, quorumLearnerLoginContext);
         } else {
             authServer = new NullQuorumAuthServer();
@@ -2591,6 +2593,11 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         LOG.info("{} set to {}", QuorumAuth.QUORUM_SERVER_SASL_LOGIN_CONTEXT, quorumServerLoginContext);
     }
 
+    void setQuorumServerAuthorizedPrincipals(Set<String> authorizedPrincipals) {
+        quorumServerAuthorizedPrincipals = authorizedPrincipals;
+        LOG.info("{} set to {}", QuorumAuth.QUORUM_SERVER_AUTHORIZED_PRINCIPALS, authorizedPrincipals);
+    }
+
     void setQuorumCnxnThreadsSize(int qCnxnThreadsSize) {
         if (qCnxnThreadsSize > QUORUM_CNXN_THREADS_SIZE_DEFAULT_VALUE) {
             quorumCnxnThreadsSize = qCnxnThreadsSize;
@@ -2699,6 +2706,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             quorumPeer.setQuorumServicePrincipal(config.quorumServicePrincipal);
             quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
             quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
+            quorumPeer.setQuorumServerAuthorizedPrincipals(config.quorumServerAuthorizedPrincipals);
         }
         quorumPeer.setQuorumCnxnThreadsSize(config.quorumCnxnThreadsSize);
 

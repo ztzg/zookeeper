@@ -218,6 +218,7 @@ public class QuorumPeerMain {
                 quorumPeer.setQuorumServicePrincipal(config.quorumServicePrincipal);
                 quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
                 quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
+                quorumPeer.setQuorumServerAuthorizedPrincipals(config.quorumServerAuthorizedPrincipals);
             }
             quorumPeer.setQuorumCnxnThreadsSize(config.quorumCnxnThreadsSize);
             quorumPeer.initialize();
