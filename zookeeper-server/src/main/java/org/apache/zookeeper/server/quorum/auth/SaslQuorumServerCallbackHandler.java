@@ -48,10 +48,12 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
     private String userName;
     private final boolean isDigestAuthn;
     private final Map<String, String> credentials;
+    private final Set<String> authzPrincipals;
     private final Set<String> authzHosts;
 
     public SaslQuorumServerCallbackHandler(
         AppConfigurationEntry[] configurationEntries,
+        Set<String> authzPrincipals,
         Set<String> authzHosts) {
 
         Map<String, String> credentials = new HashMap<>();
@@ -81,6 +83,8 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
         } else {
             this.credentials = Collections.emptyMap();
         }
+
+        this.authzPrincipals = authzPrincipals;
 
         // authorized host lists
         this.authzHosts = authzHosts;
@@ -128,6 +132,7 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
         String authorizationID = ac.getAuthorizationID();
 
         boolean authzFlag = false;
+        String method = null;
         // 1. Matches authenticationID and authorizationID
         authzFlag = authenticationID.equals(authorizationID);
 
@@ -135,12 +140,25 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
         // If not exists, then connecting peer is not authorized to join the
         // ensemble and will reject it.
         if (!isDigestAuthn && authzFlag) {
-            String[] components = authorizationID.split("[/@]");
-            if (components.length == 3) {
-                authzFlag = authzHosts.contains(components[1]);
-            } else {
-                authzFlag = false;
+            authzFlag = false;
+
+            if (!authzFlag) {
+                authzFlag = authzPrincipals.contains(authenticationID);
+                if (authzFlag) {
+                    LOG.debug("SASL authorization via specific principal: {}", authenticationID);
+                }
             }
+
+            if (!authzFlag) {
+                String[] components = authorizationID.split("[/@]");
+                if (components.length == 3) {
+                    authzFlag = authzHosts.contains(components[1]);
+                    if (authzFlag) {
+                        LOG.debug("SASL authorization via host-bound principal: {}", authenticationID);
+                    }
+                }
+            }
+
             if (!authzFlag) {
                 LOG.error("SASL authorization completed, {} is not authorized to connect", authorizationID);
             }
