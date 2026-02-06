@@ -33,10 +33,12 @@ import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.zookeeper.common.AtomicFileWritingIdiom;
 import org.apache.zookeeper.common.AtomicFileWritingIdiom.OutputStreamStatement;
@@ -121,6 +123,9 @@ public class QuorumPeerConfig {
     protected String quorumLearnerLoginContext = QuorumAuth.QUORUM_LEARNER_SASL_LOGIN_CONTEXT_DFAULT_VALUE;
     protected String quorumServerLoginContext = QuorumAuth.QUORUM_SERVER_SASL_LOGIN_CONTEXT_DFAULT_VALUE;
     protected int quorumCnxnThreadsSize;
+
+    private static final String quorumServerAuthorizedPrincipalsKeyPrefix = QuorumAuth.QUORUM_SERVER_AUTHORIZED_PRINCIPALS + ".";
+    protected Set<String> quorumServerAuthorizedPrincipals = Collections.emptySet();
 
     // multi address related configs
     private boolean multiAddressEnabled = Boolean.parseBoolean(
@@ -362,6 +367,11 @@ public class QuorumPeerConfig {
                 quorumServerLoginContext = value;
             } else if (key.equals(QuorumAuth.QUORUM_KERBEROS_SERVICE_PRINCIPAL)) {
                 quorumServicePrincipal = value;
+            } else if (key.startsWith(quorumServerAuthorizedPrincipalsKeyPrefix)) {
+                if (quorumServerAuthorizedPrincipals.isEmpty()) {
+                    quorumServerAuthorizedPrincipals = new HashSet<> ();
+                }
+                quorumServerAuthorizedPrincipals.add(value);
             } else if (key.equals("quorum.cnxn.threads.size")) {
                 quorumCnxnThreadsSize = Integer.parseInt(value);
             } else if (key.equals(JvmPauseMonitor.INFO_THRESHOLD_KEY)) {
