@@ -311,4 +311,15 @@ public class ConstraintBasedFixup4Test {
                    mkAcl("sasl:foo:cdrwa"),
                    mkAcl("sasl:foo:cdrwa", "world:anyone:r"));
     }
+
+    @Test
+    public void testApplyEnsureAuthAdminUnnecessary()
+        throws ParseException, KeeperException.InvalidACLException {
+        checkApply("4,ENSURE_AUTH_ADMIN",
+                   mkContext("/foo", "sasl:foo", "sasl:bar"),
+                   mkAcl("world:anyone:cdrwa", "sasl:bar:a"),
+                   // No need to add/expand :auth: as sasl:bar is
+                   // already admin.
+                   mkAcl("sasl:bar:a", "world:anyone:r"));
+    }
 }
