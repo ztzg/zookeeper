@@ -27,8 +27,8 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Id;
+import org.apache.zookeeper.server.auth.AuthenticationProvider;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
-import org.apache.zookeeper.server.auth.ServerAuthenticationProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -161,11 +161,11 @@ public class ConstraintBasedFixup4 implements Fixup {
         for (ACL aclElement : acl) {
             Id id = ACLs.requireSaneId(path, aclElement);
             String scheme = id.getScheme();
-            String idid = id.getId();
+            String aclExpr = id.getId();
             int perms = aclElement.getPerms();
             boolean permsHasAdmin = (perms & ZooDefs.Perms.ADMIN) != 0;
             boolean permsHasRead = (perms & ZooDefs.Perms.READ) != 0;
-            if ("world".equals(scheme) && "anyone".equals(idid)) {
+            if ("world".equals(scheme) && "anyone".equals(aclExpr)) {
                 if ((perms & MODIFY) == 0) {
                     if (perms != 0) {
                         // We accept world READ-only.
@@ -211,11 +211,8 @@ public class ConstraintBasedFixup4 implements Fixup {
                     && flags.contains(Flag.ENSURE_AUTH_ADMIN)) {
                     for (Id cid : authInfo) {
                         if (scheme.equals(cid.getScheme())
-                            && idid.equals(cid.getId())) {
-                            ServerAuthenticationProvider ap = ProviderRegistry.getServerProvider(scheme);
-                            if (ap != null && ap.isAuthenticated()) {
-                                hasAdmin = true;
-                            }
+                            && matches(cid, aclExpr)) {
+                            hasAdmin = true;
                         }
                     }
                 }
@@ -244,5 +241,21 @@ public class ConstraintBasedFixup4 implements Fixup {
         }
 
         return newAcl;
+    }
+
+    protected boolean matches(Id cid, String aclExpr)
+        throws KeeperException.InvalidACLException {
+        AuthenticationProvider ap = ProviderRegistry.getProvider(cid.getScheme());
+        if (ap == null || !ap.isAuthenticated()) {
+            return false;
+        }
+
+        try {
+            return ap.matches(cid.getId(), aclExpr);
+        } catch (UnsupportedOperationException x) {
+            // KLUDGE: Some ServerAuthenticationProvider's might not
+            // implement simple matching; ignore them for now.
+            return false;
+        }
     }
 }
