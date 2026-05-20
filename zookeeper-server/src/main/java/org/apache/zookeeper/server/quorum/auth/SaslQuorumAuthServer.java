@@ -49,7 +49,7 @@ public class SaslQuorumAuthServer implements QuorumAuthServer {
     private final boolean quorumRequireSasl;
     private final ZKConfig zkConfig;
 
-    public SaslQuorumAuthServer(boolean quorumRequireSasl, String loginContext, Set<String> authzHosts) throws SaslException {
+    public SaslQuorumAuthServer(boolean quorumRequireSasl, String loginContext, String quorumLearnerPrincipal, Set<String> authzHosts) throws SaslException {
         this.quorumRequireSasl = quorumRequireSasl;
         try {
             AppConfigurationEntry[] entries = Configuration.getConfiguration().getAppConfigurationEntry(loginContext);
@@ -59,7 +59,7 @@ public class SaslQuorumAuthServer implements QuorumAuthServer {
                     loginContext));
             }
             Supplier<CallbackHandler> callbackSupplier = () -> {
-                return new SaslQuorumServerCallbackHandler(entries, authzHosts);
+                return new SaslQuorumServerCallbackHandler(entries, quorumLearnerPrincipal, authzHosts);
             };
             zkConfig = new ZKConfig();
             serverLogin = new Login(loginContext, callbackSupplier, zkConfig);

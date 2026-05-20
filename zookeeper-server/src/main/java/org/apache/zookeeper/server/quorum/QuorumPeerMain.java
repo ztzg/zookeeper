@@ -218,6 +218,7 @@ public class QuorumPeerMain {
                 quorumPeer.setQuorumServerSaslRequired(config.quorumServerRequireSasl);
                 quorumPeer.setQuorumLearnerSaslRequired(config.quorumLearnerRequireSasl);
                 quorumPeer.setQuorumServicePrincipal(config.quorumServicePrincipal);
+                quorumPeer.setQuorumLearnerPrincipal(config.quorumLearnerPrincipal);
                 quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
                 quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
             }

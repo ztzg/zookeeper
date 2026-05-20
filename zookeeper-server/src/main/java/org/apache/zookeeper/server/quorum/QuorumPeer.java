@@ -775,6 +775,11 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     protected String quorumServicePrincipal;
 
     /**
+     * Kerberos quorum learner principal. Defaulting to ''.
+     */
+    protected String quorumLearnerPrincipal;
+
+    /**
      * Quorum learner login context name in jaas-conf file to read the kerberos
      * security details. Defaulting to 'QuorumLearner'.
      */
@@ -1122,7 +1127,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             for (QuorumServer qs : getView().values()) {
                 authzHosts.add(qs.hostname);
             }
-            authServer = new SaslQuorumAuthServer(isQuorumServerSaslAuthRequired(), quorumServerLoginContext, authzHosts);
+            authServer = new SaslQuorumAuthServer(isQuorumServerSaslAuthRequired(), quorumServerLoginContext, quorumLearnerPrincipal, authzHosts);
             authLearner = new SaslQuorumAuthLearner(isQuorumLearnerSaslAuthRequired(), quorumServicePrincipal, quorumLearnerLoginContext);
         } else if (isQuorumSslAuthorizationEnabled()) {
             Set<String> authzHosts = new HashSet<>();
@@ -2591,6 +2596,11 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         LOG.info("{} set to {}", QuorumAuth.QUORUM_KERBEROS_SERVICE_PRINCIPAL, quorumServicePrincipal);
     }
 
+    void setQuorumLearnerPrincipal(String learnerPrincipal) {
+        quorumLearnerPrincipal = learnerPrincipal;
+        LOG.info("{} set to {}", QuorumAuth.QUORUM_KERBEROS_LEARNER_PRINCIPAL, quorumLearnerPrincipal);
+    }
+
     void setQuorumLearnerLoginContext(String learnerContext) {
         quorumLearnerLoginContext = learnerContext;
         LOG.info("{} set to {}", QuorumAuth.QUORUM_LEARNER_SASL_LOGIN_CONTEXT, quorumLearnerLoginContext);
@@ -2716,6 +2726,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             quorumPeer.setQuorumServerSaslRequired(config.quorumServerRequireSasl);
             quorumPeer.setQuorumLearnerSaslRequired(config.quorumLearnerRequireSasl);
             quorumPeer.setQuorumServicePrincipal(config.quorumServicePrincipal);
+            quorumPeer.setQuorumLearnerPrincipal(config.quorumLearnerPrincipal);
             quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
             quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
         }
