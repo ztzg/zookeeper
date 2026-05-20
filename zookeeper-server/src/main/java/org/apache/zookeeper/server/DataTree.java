@@ -18,6 +18,7 @@
 
 package org.apache.zookeeper.server;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -94,6 +95,12 @@ import org.slf4j.LoggerFactory;
  */
 public class DataTree {
 
+    public enum CheckAclMappingMode {
+        WARN,
+        FIXUP,
+        FATAL,
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(DataTree.class);
 
     private final RateLogger RATE_LOGGER = new RateLogger(LOG, 15 * 60 * 1000);
@@ -164,6 +171,8 @@ public class DataTree {
     private final Set<String> ttls = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     private final ReferenceCountedACLCache aclCache = new ReferenceCountedACLCache();
+
+    private boolean lenientAcls = false;
 
     // The maximum number of tree digests that we will keep in our history
     public static final int DIGEST_LOG_LIMIT = 1024;
@@ -785,13 +794,87 @@ public class DataTree {
     }
 
     public List<ACL> getACL(DataNode node) {
-        synchronized (node) {
-            return aclCache.convertLong(node.acl);
+        if (!lenientAcls) {
+            synchronized (node) {
+                return aclCache.convertLong(node.acl);
+            }
+        } else {
+            Long aclId = null;
+            try {
+                synchronized (node) {
+                    aclId = node.acl;
+                    return aclCache.convertLong(aclId);
+                }
+            } catch (RuntimeException x) {
+                // ZOOKEEPER-4846: The ACL may be missing from the
+                // mapping when replaying transactions on top of a
+                // fuzzy snapshot.
+                LOG.warn("Leniently ignoring missing ACL ID " + aclId, x);
+                return null;
+            }
         }
     }
 
     public int aclCacheSize() {
         return aclCache.size();
+    }
+
+    public void setLenientAcls(boolean lenient) {
+        lenientAcls = lenient;
+    }
+
+    public boolean getLenientAcls() {
+        return lenientAcls;
+    }
+
+    @SuppressFBWarnings("RC_REF_COMPARISON")
+    public void checkAclMapping(CheckAclMappingMode mode) {
+        aclCache.purgeUnused();
+
+        int errors = 0;
+
+        for (Map.Entry<String, DataNode> entry : nodes.entrySet()) {
+            DataNode node = entry.getValue();
+            Long aclId = null;
+            List<ACL> acl = null;
+            try {
+                synchronized (node) {
+                    aclId = node.acl;
+                    acl = aclCache.convertLong(aclId);
+                }
+                if (acl == null) {
+                    LOG.error("Null ACL on node '{}' ({})", entry.getKey(), aclId);
+                }
+            } catch (RuntimeException x) {
+                LOG.error("Missing ACL on node '{}' ({})", entry.getKey(), aclId, x);
+            }
+            if (acl == null) {
+                errors++;
+                if (mode == CheckAclMappingMode.FIXUP) {
+                    Long aclId2 = null;
+                    Long newAclId = null;
+                    synchronized (node) {
+                        aclId2 = node.acl;
+                        // "Converting" null results in non-refcounted
+                        // OPEN_ACL_UNSAFE.
+                        newAclId = node.acl = aclCache.convertAcls(null);
+                    }
+                    LOG.warn("Fixed ACL on node '{}' from {} to {}",
+                             entry.getKey(), aclId, newAclId);
+                    if (aclId != aclId2) {
+                        LOG.warn("Race condition during ACL fixup! {}, {}, {}",
+                                 aclId, aclId2, newAclId);
+                    }
+                }
+            }
+        }
+        if (errors > 0) {
+            if (mode == CheckAclMappingMode.FATAL) {
+                throw new RuntimeException("Inconsistent ACL state (" + errors + " errors detected)");
+            } else {
+                LOG.error("Observed {} ACL errors", errors);
+            }
+        }
     }
 
     public static class ProcessTxnResult {

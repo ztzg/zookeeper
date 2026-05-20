@@ -23,6 +23,7 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.jute.Record;
@@ -31,6 +32,7 @@ import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.ZooDefs.OpCode;
 import org.apache.zookeeper.common.Time;
 import org.apache.zookeeper.server.DataTree;
+import org.apache.zookeeper.server.DataTree.CheckAclMappingMode;
 import org.apache.zookeeper.server.DataTree.ProcessTxnResult;
 import org.apache.zookeeper.server.Request;
 import org.apache.zookeeper.server.ServerMetrics;
@@ -75,6 +77,8 @@ public class FileTxnSnapLog {
     private static final String ZOOKEEPER_DB_AUTOCREATE_DEFAULT = "true";
 
     public static final String ZOOKEEPER_SNAPSHOT_TRUST_EMPTY = "zookeeper.snapshot.trust.empty";
+
+    public static final String ZOOKEEPER_DB_CHECK_ACLS = "zookeeper.db.check.acls";
 
     private static final String EMPTY_SNAPSHOT_WARNING = "No snapshot found, but there are log entries. ";
 
@@ -333,6 +337,9 @@ public class FileTxnSnapLog {
         int txnLoaded = 0;
         long startTime = Time.currentElapsedTime();
         try {
+            // ZOOKEEPER-4846: ACLs may be missing from the mapping
+            // when replaying transactions on top of a fuzzy snapshot.
+            dt.setLenientAcls(true);
             while (true) {
                 // iterator points to
                 // the first valid txn when initialized
@@ -363,6 +370,7 @@ public class FileTxnSnapLog {
                 }
             }
         } finally {
+            dt.setLenientAcls(false);
             if (itr != null) {
                 itr.close();
             }
@@ -372,6 +380,20 @@ public class FileTxnSnapLog {
         LOG.info("{} txns loaded in {} ms", txnLoaded, loadTime);
         ServerMetrics.getMetrics().STARTUP_TXNS_LOADED.add(txnLoaded);
         ServerMetrics.getMetrics().STARTUP_TXNS_LOAD_TIME.add(loadTime);
+
+        String checkAcls = System.getProperty(ZOOKEEPER_DB_CHECK_ACLS, "false");
+        if (!checkAcls.equalsIgnoreCase("false")) {
+            CheckAclMappingMode mode = CheckAclMappingMode.WARN;
+            try {
+                mode = CheckAclMappingMode.valueOf(checkAcls.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                LOG.error("Unexpected value for {}: '{}'", ZOOKEEPER_DB_CHECK_ACLS, checkAcls, e);
+            }
+            startTime = Time.currentElapsedTime();
+            dt.checkAclMapping(mode);
+            long checkTime = Time.currentElapsedTime() - startTime;
+            LOG.info("Checked ACL mapping consistency in {} ms", checkTime);
+        }
 
         return highestZxid;
     }
