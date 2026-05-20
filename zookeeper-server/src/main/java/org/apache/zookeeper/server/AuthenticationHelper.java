@@ -18,32 +18,37 @@
 package org.apache.zookeeper.server;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Id;
 import org.apache.zookeeper.proto.ReplyHeader;
+import org.apache.zookeeper.server.auth.AuthenticationLimiter;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
+import org.apache.zookeeper.util.ServiceUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Contains helper methods to enforce authentication
+ * Contains helper methods to manage authentication
  */
 public class AuthenticationHelper {
     private static final Logger LOG = LoggerFactory.getLogger(AuthenticationHelper.class);
 
     public static final String ENFORCE_AUTH_ENABLED = "zookeeper.enforce.auth.enabled";
     public static final String ENFORCE_AUTH_SCHEMES = "zookeeper.enforce.auth.schemes";
+    public static final String AUTH_LIMITER = "zookeeper.auth.limiter";
     public static final String SESSION_REQUIRE_CLIENT_SASL_AUTH =
         "zookeeper.sessionRequireClientSASLAuth";
     public static final String SASL_AUTH_SCHEME = "sasl";
 
     private boolean enforceAuthEnabled;
-    private List<String> enforceAuthSchemes = new ArrayList<>();
+    private final Set<String> enforceAuthSchemes = new HashSet<>();
     private boolean saslAuthRequired;
+    private AuthenticationLimiter limiter = null;
 
     public AuthenticationHelper() {
         initConfigurations();
@@ -67,6 +72,20 @@ public class AuthenticationHelper {
         LOG.info("{} = {}", ENFORCE_AUTH_SCHEMES, enforceAuthSchemes);
         validateConfiguredProperties();
         saslAuthRequired = enforceAuthEnabled && enforceAuthSchemes.contains(SASL_AUTH_SCHEME);
+
+        String limiterClassName = System.getProperty(AUTH_LIMITER);
+        if (limiterClassName != null) {
+            try {
+                Class<?> c = ZooKeeperServer.class.getClassLoader().loadClass(limiterClassName);
+                limiter = (AuthenticationLimiter) c.getDeclaredConstructor().newInstance();
+                LOG.info("Installed authentication limiter {}", limiterClassName);
+            } catch (Exception e) {
+                LOG.warn("Failed to load {} implementation {}",
+                         AuthenticationLimiter.class.getName(),
+                         limiterClassName, e);
+                ServiceUtils.requestSystemExit(ExitCode.UNEXPECTED_ERROR.getValue());
+            }
+        }
     }
 
     private void validateConfiguredProperties() {
@@ -131,11 +150,24 @@ public class AuthenticationHelper {
         return true;
     }
 
+    public KeeperException.Code checkAuthenticationLimits(ServerCnxn connection) {
+        if (limiter == null) {
+            // Always acceptable.
+            return KeeperException.Code.OK;
+        }
+
+        return limiter.checkAuthenticationLimits(connection);
+    }
+
     private List<String> getAuthSchemes(ServerCnxn connection) {
         return connection.getAuthInfo().stream().map(Id::getScheme).collect(Collectors.toList());
     }
 
     public boolean isSaslAuthRequired() {
         return saslAuthRequired;
+    }
+
+    public AuthenticationLimiter getAuthenticationLimiter() {
+        return limiter;
     }
 }
