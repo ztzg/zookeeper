@@ -43,7 +43,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -58,6 +60,7 @@ import org.apache.zookeeper.ZKTestCase;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.common.IOUtils;
+import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.metrics.MetricsUtils;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ServerMetrics;
@@ -281,6 +284,25 @@ public class SnapshotAndRestoreCommandTest extends ZKTestCase {
     }
 
     @Test
+    public void testSnapshotCommand_noPerms() throws Exception {
+        // Temporarily change root ACL
+        final List<ACL> originalEntries = zk.getACL(Commands.ROOT_PATH, null);
+
+        final List<ACL> newEntries = new ArrayList<>();
+        newEntries.addAll(ZooDefs.Ids.READ_ACL_UNSAFE);
+        newEntries.add(new ACL(ZooDefs.Perms.ADMIN, originalEntries.get(0).getId()));
+        zk.setACL(Commands.ROOT_PATH, newEntries, -1);
+
+        try {
+            // take snapshot with streaming
+            final HttpURLConnection snapshotConn = sendSnapshotRequest(true, jettyAdminPort);
+            assertEquals(HttpURLConnection.HTTP_FORBIDDEN, snapshotConn.getResponseCode());
+        } finally {
+            zk.setACL(Commands.ROOT_PATH, originalEntries, -1);
+        }
+    }
+
+    @Test
     public void testRestoreCommand_disabled() throws Exception {
         System.setProperty(ADMIN_RESTORE_ENABLED, "false");
         try {
@@ -310,6 +332,28 @@ public class SnapshotAndRestoreCommandTest extends ZKTestCase {
             IOUtils.copyBytes(inputStream, outputStream, 1024, true);
         }
         assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, restoreConn.getResponseCode());
+    }
+
+    @Test
+    public void testRestoreCommand_noPerms() throws Exception {
+        // Temporarily change root ACL
+        final List<ACL> originalEntries = zk.getACL(Commands.ROOT_PATH, null);
+
+        final List<ACL> newEntries = new ArrayList<>();
+        newEntries.addAll(ZooDefs.Ids.READ_ACL_UNSAFE);
+        newEntries.add(new ACL(ZooDefs.Perms.ADMIN, originalEntries.get(0).getId()));
+        zk.setACL(Commands.ROOT_PATH, newEntries, -1);
+
+        try {
+            final HttpURLConnection restoreConn = sendRestoreRequest(jettyAdminPort);
+            try (final InputStream inputStream = new ByteArrayInputStream("Invalid snapshot data".getBytes());
+                 final OutputStream outputStream = restoreConn.getOutputStream()) {
+                IOUtils.copyBytes(inputStream, outputStream, 1024, true);
+            }
+            assertEquals(HttpURLConnection.HTTP_FORBIDDEN, restoreConn.getResponseCode());
+        } finally {
+            zk.setACL(Commands.ROOT_PATH, originalEntries, -1);
+        }
     }
 
     private void createData(final ZooKeeper zk, final String parentPath, final long count) throws Exception {
