@@ -81,6 +81,7 @@ import org.apache.zookeeper.server.RequestProcessor.RequestProcessorException;
 import org.apache.zookeeper.server.ServerCnxn.CloseRequestException;
 import org.apache.zookeeper.server.SessionTracker.Session;
 import org.apache.zookeeper.server.SessionTracker.SessionExpirer;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.auth.AuthenticationLimiter;
 import org.apache.zookeeper.server.auth.ProviderRegistry;
 import org.apache.zookeeper.server.auth.ServerAuthenticationProvider;
@@ -2330,7 +2331,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
              * we only care about it being well-formed (and if it isn't, an
              * exception will be raised).
              */
-            PrepRequestProcessor.fixupACL(path, request.authInfo, acl);
+            ACLs.fixupACL(path, request.sessionId, request.authInfo, acl);
         }
 
         return path;

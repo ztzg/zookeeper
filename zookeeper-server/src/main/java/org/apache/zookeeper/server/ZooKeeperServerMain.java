@@ -28,6 +28,7 @@ import org.apache.zookeeper.jmx.ManagedUtil;
 import org.apache.zookeeper.metrics.MetricsProvider;
 import org.apache.zookeeper.metrics.MetricsProviderLifeCycleException;
 import org.apache.zookeeper.metrics.impl.MetricsProviderBootstrap;
+import org.apache.zookeeper.server.acl.ACLs;
 import org.apache.zookeeper.server.admin.AdminServer;
 import org.apache.zookeeper.server.admin.AdminServer.AdminServerException;
 import org.apache.zookeeper.server.admin.AdminServerFactory;
@@ -96,7 +97,7 @@ public class ZooKeeperServerMain {
         ServiceUtils.requestSystemExit(ExitCode.EXECUTION_FINISHED.getValue());
     }
 
-    protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServerException {
+    protected void initializeAndRun(String[] args) throws ConfigException, IOException, AdminServerException, ACLs.InitializationException {
         try {
             ManagedUtil.registerLog4jMBeans();
         } catch (JMException e) {
@@ -119,7 +120,7 @@ public class ZooKeeperServerMain {
      * @throws IOException
      * @throws AdminServerException
      */
-    public void runFromConfig(ServerConfig config) throws IOException, AdminServerException {
+    public void runFromConfig(ServerConfig config) throws IOException, AdminServerException, ACLs.InitializationException {
         LOG.info("Starting server");
         FileTxnSnapLog txnLog = null;
         try {
@@ -131,6 +132,7 @@ public class ZooKeeperServerMain {
                 throw new IOException("Cannot boot MetricsProvider " + config.getMetricsProviderClassName(), error);
             }
             ServerMetrics.metricsProviderInitialized(metricsProvider);
+            ACLs.initialize();
             ProviderRegistry.initialize();
             // Note that this thread isn't going to be doing anything else,
             // so rather than spawning another thread, we will just call

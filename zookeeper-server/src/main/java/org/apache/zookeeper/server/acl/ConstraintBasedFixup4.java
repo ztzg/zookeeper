@@ -1,0 +1,261 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.zookeeper.server.acl;
+
+import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.data.ACL;
+import org.apache.zookeeper.data.Id;
+import org.apache.zookeeper.server.auth.AuthenticationProvider;
+import org.apache.zookeeper.server.auth.ProviderRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class ConstraintBasedFixup4 implements Fixup {
+    private static final Logger LOG = LoggerFactory.getLogger(ConstraintBasedFixup4.class);
+
+    public List<ACL> apply(FixupContext context, List<ACL> acl)
+        throws KeeperException.InvalidACLException {
+        for (Id authId : context.getAuthInfo()) {
+            if (authId.getScheme().equals("super")) {
+                return acl;
+            }
+        }
+
+        byte[] data = context.loadConstraints();
+        if (data != null) {
+            try {
+                acl = applyEncodedConstraints(context, acl, data);
+            } catch (KeeperException.InvalidACLException e) {
+                throw e;
+            } catch (Exception e) {
+                String path = context.getPath();
+                LOG.error("Error processing ACL constraints {} for node {}",
+                          new String(data, StandardCharsets.UTF_8), path, e);
+                throw new KeeperException.InvalidACLException(path);
+            }
+        }
+
+        return acl;
+    }
+
+    protected enum Flag {
+        /** Throws KeeperException.InvalidACLException */
+        REJECT_UNSAFE,
+        /** Remove unsafe bits */
+        MASK_UNSAFE,
+        /** Replace unsafe elements by auth:: */
+        UNSAFE_TO_AUTH,
+        /** Ensure auth:: (or UNSAFE_TO target) has :a */
+        ENSURE_AUTH_ADMIN,
+        /** Replace elements by UNSAFE_TO:{target_id} */
+        UNSAFE_TO,
+        /** Ensure world:anyone:r is included */
+        ENSURE_WORLD_READ,
+        /** Do not keep world:anyone:r on UNSAFE_TO_* remapping */
+        NO_KEEP_WORLD_READ,
+        /** Do not log ACL transformation(s) */
+        NO_LOG,
+    }
+
+    protected static final String UNSAFE_TO_PREFIX = Flag.UNSAFE_TO + ":";
+
+    protected List<ACL> applyEncodedConstraints(FixupContext context, List<ACL> acl, byte[] data)
+        throws ParseException, KeeperException.InvalidACLException {
+        EnumSet<Flag> flags = EnumSet.noneOf(Flag.class);
+        List<Id> targetIds = decodeFlags(data, flags);
+
+        validateFlags(context, flags, targetIds);
+
+        return applyFlags(context, acl, flags, targetIds);
+    }
+
+    protected void validateFlags(FixupContext context, EnumSet<Flag> flags, List<Id> targetIds)
+        throws KeeperException.InvalidACLException {
+        // (Optionally?) warn about invalid combinations?
+        if (flags.contains(Flag.UNSAFE_TO)) {
+            String path = context.getPath();
+            if (targetIds == null || targetIds.isEmpty()) {
+                throw new KeeperException.InvalidACLException(path);
+            }
+            for (Id targetId : targetIds) {
+                ACLs.validateId(path, targetId);
+            }
+        }
+    }
+
+    protected List<Id> decodeFlags(byte[] data, EnumSet<Flag> flags)
+        throws ParseException {
+        // Start with ASCII "4,"
+        if (data.length < 2 || data[0] != '4' || data[1] != ',') {
+            throw new ParseException("Unsupported constraint encoding", 0);
+        }
+
+        List<Id> targetIds = null;
+
+        // Load comma-separated enum values.
+        int lastIndex = 1;
+        for (int i = 2; i <= data.length; i++) {
+            if (i == data.length || data[i] == ',') {
+                String s = new String(data, lastIndex + 1, i - 1 - lastIndex,
+                                      StandardCharsets.US_ASCII);
+                if (s.startsWith(UNSAFE_TO_PREFIX)) {
+                    if (targetIds == null) {
+                        targetIds = new ArrayList<>();
+                    }
+                    Id targetId = extractId(s, UNSAFE_TO_PREFIX.length());
+                    targetIds.add(targetId);
+                    flags.add(Flag.UNSAFE_TO);
+                } else if (s.length() > 0) {
+                    flags.add(Flag.valueOf(s));
+                }
+                lastIndex = i;
+            }
+        }
+
+        return targetIds;
+    }
+
+    protected Id extractId(String s, int at) throws ParseException {
+        int sep = s.indexOf(':', at);
+        if (sep < 0 || sep == s.length()) {
+            throw new ParseException("Expected an ID of the form 'scheme:id'; "
+                                     + "got '" + s.substring(at) + "'", 0);
+        }
+        return new Id(s.substring(at, sep), s.substring(sep + 1));
+    }
+
+    protected static final int MODIFY = ZooDefs.Perms.ALL & ~ZooDefs.Perms.READ;
+
+    protected List<ACL> applyFlags(FixupContext context, List<ACL> acl, EnumSet<Flag> flags, List<Id> targetIds)
+        throws KeeperException.InvalidACLException {
+        String path = context.getPath();
+        List<Id> authInfo = context.getAuthInfo();
+        boolean hasAdmin = false;
+        boolean hasWorldRead = false;
+        boolean removedWorldRead = false;
+        boolean fixups = false;
+        List<ACL> newAcl = new ArrayList<>(acl.size());
+
+        for (ACL aclElement : acl) {
+            Id id = ACLs.requireSaneId(path, aclElement);
+            String scheme = id.getScheme();
+            String aclExpr = id.getId();
+            int perms = aclElement.getPerms();
+            boolean permsHasAdmin = (perms & ZooDefs.Perms.ADMIN) != 0;
+            boolean permsHasRead = (perms & ZooDefs.Perms.READ) != 0;
+            if ("world".equals(scheme) && "anyone".equals(aclExpr)) {
+                if ((perms & MODIFY) == 0) {
+                    if (perms != 0) {
+                        // We accept world READ-only.
+                        newAcl.add(aclElement);
+                        hasWorldRead = permsHasRead;
+                    }
+                } else {
+                    if (flags.contains(Flag.REJECT_UNSAFE)) {
+                        throw new KeeperException.InvalidACLException(path);
+                    } else if (flags.contains(Flag.UNSAFE_TO)) {
+                        for (Id targetId : targetIds) {
+                            newAcl.add(new ACL(perms, targetId));
+                        }
+                        removedWorldRead = permsHasRead;
+                        if (permsHasAdmin) {
+                            // Kind-of assumes that at least one of
+                            // the target IDs is part of "auth::"!
+                            hasAdmin = true;
+                        }
+                        fixups = true;
+                    } else if (flags.contains(Flag.UNSAFE_TO_AUTH)) {
+                        ACLs.expandAuth(path, authInfo, perms, newAcl);
+                        removedWorldRead = permsHasRead;
+                        if (permsHasAdmin) {
+                            hasAdmin = true;
+                        }
+                        fixups = true;
+                    } else if (flags.contains(Flag.MASK_UNSAFE)) {
+                        int newPerms = perms & ~MODIFY;
+                        if (newPerms != 0) {
+                            newAcl.add(new ACL(newPerms, id));
+                            hasWorldRead = permsHasRead;
+                        }
+                        fixups = true;
+                    } else {
+                        removedWorldRead = permsHasRead;
+                        fixups = true;
+                    }
+                }
+            } else {
+                if (!hasAdmin
+                    && permsHasAdmin
+                    && flags.contains(Flag.ENSURE_AUTH_ADMIN)) {
+                    for (Id cid : authInfo) {
+                        if (scheme.equals(cid.getScheme())
+                            && matches(cid, aclExpr)) {
+                            hasAdmin = true;
+                        }
+                    }
+                }
+                newAcl.add(aclElement);
+            }
+        }
+
+        if (!hasWorldRead) {
+            if (flags.contains(Flag.ENSURE_WORLD_READ)
+                || (removedWorldRead
+                    && !flags.contains(Flag.NO_KEEP_WORLD_READ))) {
+                newAcl.add(ZooDefs.Ids.READ_ACL_UNSAFE.get(0));
+                fixups = true;
+            }
+        }
+
+        if (!hasAdmin && flags.contains(Flag.ENSURE_AUTH_ADMIN)) {
+            ACLs.expandAuth(path, authInfo, ZooDefs.Perms.ADMIN, newAcl);
+            fixups = true;
+        }
+
+        if (fixups && !flags.contains(Flag.NO_LOG)) {
+            LOG.info("Fixed up ACL for path {} in session 0x{} from {} to {}",
+                     path, Long.toHexString(context.getSessionId()),
+                     acl, newAcl);
+        }
+
+        return newAcl;
+    }
+
+    protected boolean matches(Id cid, String aclExpr)
+        throws KeeperException.InvalidACLException {
+        AuthenticationProvider ap = ProviderRegistry.getProvider(cid.getScheme());
+        if (ap == null || !ap.isAuthenticated()) {
+            return false;
+        }
+
+        try {
+            return ap.matches(cid.getId(), aclExpr);
+        } catch (UnsupportedOperationException x) {
+            // KLUDGE: Some ServerAuthenticationProvider's might not
+            // implement simple matching; ignore them for now.
+            return false;
+        }
+    }
+}
