@@ -122,6 +122,8 @@ public class QuorumPeerConfig {
     protected String quorumServerLoginContext = QuorumAuth.QUORUM_SERVER_SASL_LOGIN_CONTEXT_DFAULT_VALUE;
     protected int quorumCnxnThreadsSize;
 
+    protected boolean quorumSslAuthorizationEnabled = false;
+
     // multi address related configs
     private boolean multiAddressEnabled = Boolean.parseBoolean(
         System.getProperty(QuorumPeer.CONFIG_KEY_MULTI_ADDRESS_ENABLED, QuorumPeer.CONFIG_DEFAULT_MULTI_ADDRESS_ENABLED));
@@ -362,6 +364,8 @@ public class QuorumPeerConfig {
                 quorumServerLoginContext = value;
             } else if (key.equals(QuorumAuth.QUORUM_KERBEROS_SERVICE_PRINCIPAL)) {
                 quorumServicePrincipal = value;
+            } else if (key.equals(QuorumAuth.QUORUM_SSL_AUTHORIZATION_ENABLED)) {
+                quorumSslAuthorizationEnabled = parseBoolean(key, value);
             } else if (key.equals("quorum.cnxn.threads.size")) {
                 quorumCnxnThreadsSize = Integer.parseInt(value);
             } else if (key.equals(JvmPauseMonitor.INFO_THRESHOLD_KEY)) {
