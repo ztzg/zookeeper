@@ -51,11 +51,13 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
     private final boolean isDigestAuthn;
     private final Map<String, String> credentials;
     private final String authzPrimary;
+    private final Set<String> authzPrincipals;
     private final Set<String> authzHosts;
 
     public SaslQuorumServerCallbackHandler(
         AppConfigurationEntry[] configurationEntries,
         String quorumLearnerPrincipal,
+        Set<String> authzPrincipals,
         Set<String> authzHosts) {
 
         Map<String, String> credentials = new HashMap<>();
@@ -99,6 +101,8 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
                 throw new RuntimeException(errorMessage);
             }
         }
+
+        this.authzPrincipals = authzPrincipals;
 
         // authorized host lists
         this.authzHosts = authzHosts;
@@ -149,16 +153,29 @@ public class SaslQuorumServerCallbackHandler implements CallbackHandler {
         // 1. Matches authenticationID and authorizationID
         authzFlag = authenticationID.equals(authorizationID);
 
-        if (!isDigestAuthn) {
-            String[] components = authorizationID.split("[/@]");
-            if (components.length == 3) {
-                // 2. Verify whether the principal's primary matches the expected value, if any.
-                authzFlag = authzFlag && (authzPrimary == null || authzPrimary.equals(components[0]));
-                // 3. Verify whether the instance/host component matches one of the ensemble hostnames.
-                authzFlag = authzFlag && authzHosts.contains(components[1]);
-            } else {
-                authzFlag = false;
+        if (!isDigestAuthn && authzFlag) {
+            authzFlag = false;
+
+            if (!authzFlag) {
+                authzFlag = authzPrincipals.contains(authenticationID);
+                if (authzFlag) {
+                    LOG.debug("SASL authorization via specific principal: {}", authenticationID);
+                }
+           }
+
+            if (!authzFlag) {
+                String[] components = authorizationID.split("[/@]");
+                if (components.length == 3) {
+                    // 2. Verify whether the principal's primary matches the expected value, if any.
+                    authzFlag = authzPrimary == null || authzPrimary.equals(components[0]);
+                    // 3. Verify whether the instance/host component matches one of the ensemble hostnames.
+                    authzFlag = authzFlag && authzHosts.contains(components[1]);
+                    if (authzFlag) {
+                        LOG.debug("SASL authorization via host-bound principal: {}", authenticationID);
+                    }
+                }
             }
+
             if (!authzFlag) {
                 LOG.error("SASL authorization completed, {} is not authorized to connect", authorizationID);
             }

@@ -221,6 +221,7 @@ public class QuorumPeerMain {
                 quorumPeer.setQuorumLearnerPrincipal(config.quorumLearnerPrincipal);
                 quorumPeer.setQuorumServerLoginContext(config.quorumServerLoginContext);
                 quorumPeer.setQuorumLearnerLoginContext(config.quorumLearnerLoginContext);
+                quorumPeer.setQuorumServerAuthorizedPrincipals(config.quorumServerAuthorizedPrincipals);
             }
 
             quorumPeer.setQuorumSslAuthorizationEnabled(config.quorumSslAuthorizationEnabled);
