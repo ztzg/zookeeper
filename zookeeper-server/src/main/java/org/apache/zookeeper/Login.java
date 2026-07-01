@@ -69,10 +69,12 @@ public class Login {
     private static final long MIN_TIME_BEFORE_RELOGIN = Long.getLong(
       MIN_TIME_BEFORE_RELOGIN_CONFIG_KEY, DEFAULT_MIN_TIME_BEFORE_RELOGIN);
 
+    public static final String SKIP_TICKET_CACHE_REFRESH = "zookeeper.kerberos.skipTicketCacheRefresh";
+
     private Subject subject = null;
     private Thread t = null;
     private boolean isKrbTicket = false;
-    private boolean isUsingTicketCache = false;
+    private boolean isTicketCacheRefresher = false;
 
     private LoginContext login = null;
     private String loginContextName = null;
@@ -111,7 +113,9 @@ public class Login {
             if (entry.getOptions().get("useTicketCache") != null) {
                 String val = (String) entry.getOptions().get("useTicketCache");
                 if (val.equals("true")) {
-                    isUsingTicketCache = true;
+                    boolean skipTicketCacheRefresh = Boolean.getBoolean(SKIP_TICKET_CACHE_REFRESH);
+                    LOG.info("{} set to {}", SKIP_TICKET_CACHE_REFRESH, skipTicketCacheRefresh);
+                    isTicketCacheRefresher = !skipTicketCacheRefresh;
                 }
             }
             if (entry.getOptions().get("principal") != null) {
@@ -145,7 +149,7 @@ public class Login {
                         nextRefresh = getRefreshTime(tgt);
                         long expiry = tgt.getEndTime().getTime();
                         Date expiryDate = new Date(expiry);
-                        if ((isUsingTicketCache) && (tgt.getEndTime().equals(tgt.getRenewTill()))) {
+                        if ((isTicketCacheRefresher) && (tgt.getEndTime().equals(tgt.getRenewTill()))) {
                             LOG.error(
                                 "The TGT cannot be renewed beyond the next expiry date: {}."
                                     + "This process will not be able to authenticate new SASL connections after that "
@@ -213,7 +217,7 @@ public class Login {
                             nextRefreshDate);
                         break;
                     }
-                    if (isUsingTicketCache) {
+                    if (isTicketCacheRefresher) {
                         String cmd = zkConfig.getProperty(ZKConfig.KINIT_COMMAND, KINIT_COMMAND_DEFAULT);
                         String kinitArgs = "-R";
                         int retry = 1;
