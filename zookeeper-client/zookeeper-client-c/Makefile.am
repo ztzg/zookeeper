@@ -20,7 +20,7 @@ if WANT_SASL
 endif
 
 AM_CPPFLAGS = -I${srcdir}/include -I${srcdir}/tests -I${srcdir}/generated $(SOLARIS_CPPFLAGS) $(OPENSSL_CPPFLAGS) $(SASL_CPPFLAGS)
-AM_CFLAGS = -Wall -Werror -Wdeclaration-after-statement
+AM_CFLAGS = -Wall -Wdeclaration-after-statement
 AM_CXXFLAGS = -Wall $(USEIPV6)
 LIB_LDFLAGS = -no-undefined -version-info 2 $(SOLARIS_LIB_LDFLAGS) $(OPENSSL_LIB_LDFLAGS) $(SASL_LIB_LDFLAGS)
 
